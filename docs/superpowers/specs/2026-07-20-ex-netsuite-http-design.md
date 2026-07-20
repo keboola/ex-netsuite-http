@@ -51,10 +51,20 @@ config is last-writer-wins for state (irrelevant to the default sequential mode)
 **Incremental → output mapping + state.** Incremental is driven by a watermark column
 (`lastmodifieddate` / `lastModifiedDate`), default `incremental_load`. On incremental runs we set
 `incremental=True` on the output table and require a primary key so Storage **upserts** (PK match →
-replace). State is **per-row and automatic**: before a row runs, its state loads into
-`/data/in/state.json`; after success we `write_state_file({"last_run": "<max watermark seen, UTC
-ISO-8601>"})` to `/data/out/state.json`, which the platform saves back to that row only. The
-watermark is written **only after a successful output write**, so a failed run is safely retried.
+replace).
+
+The watermark value is captured **before the fetch begins**, not derived from the max value seen in
+the returned rows (grounded correction — `incremental-state.md`). Deriving the watermark from
+`max(lastmodifieddate)` of fetched rows silently skips records modified *during* the run whose
+timestamp is ≤ the already-seen max. Instead: capture `run_started_at` before calling the API,
+**sourced from NetSuite's own clock** (e.g. SuiteQL `SELECT SYSDATE` / SOAP `getServerTime`) rather
+than the container clock, to defuse the timezone/clock-skew hazard research §5 flagged (NetSuite
+returns account-timezone datetimes). The query filter is `WHERE lastmodifieddate > :last_run`; any
+boundary overlap on the next run is absorbed by the PK upsert. State is **per-row and automatic**:
+before a row runs, its state loads into `/data/in/state.json`; after a **successful** output write we
+`write_state_file({"last_run": run_started_at})` (UTC ISO-8601) to `/data/out/state.json`, which the
+platform saves back to that row only — so a failed run is safely retried without advancing the
+watermark. On first run (empty state) we full-load or start from an optional configured start date.
 
 **Secrets.** The four TBA secrets are `#`-prefixed config keys (`#consumer_key`, `#consumer_secret`,
 `#token_id`, `#token_secret`); the platform encrypts them on save (`KBC::ProjectSecure::…`) and the
@@ -369,9 +379,12 @@ references (Phase 1 read + fresh-subagent gate before the plan). Each reference 
 - `config-rows.md` → **corrected:** initial draft implied rows could be assumed parallel. Fixed in
   §2 — rows run **sequentially by default**, parallelism opt-in, state per-row and not thread-safe,
   component receives a single merged `config.json`, input mapping belongs on the row.
-- `incremental-state.md` → **corrected:** standardized on `write_state_file`/`get_state_file` with
-  key `last_run`, watermark written **only after successful output**, UTC ISO-8601 timestamps,
-  `load_type` enum (not a bare boolean) with `incremental` as a computed field. Reflected in §2/§5.
+- `incremental-state.md` → **corrected (twice):** (1) standardized on `write_state_file`/
+  `get_state_file` with key `last_run`, watermark written **only after successful output**, UTC
+  ISO-8601, `load_type` enum (not a bare boolean) with `incremental` as a computed field; (2) the
+  watermark is now captured as a **pre-fetch `run_started_at` timestamp (from NetSuite server time)**,
+  not the max `lastmodifieddate` seen in returned rows — the canonical pattern that avoids skipping
+  records modified mid-run; PK upsert absorbs boundary overlap. Reflected in §2/§5.
 - `encryption.md` → **correct** — 4 TBA secrets `#`-prefixed at config level, decrypted at runtime,
   `KBC::ProjectSecure` default scope noted in §3/§2.
 - `output-mapping.md` → **corrected:** made explicit that `incremental=True` **requires a PK** to
