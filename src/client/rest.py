@@ -9,6 +9,8 @@ where each page is an independent signed request). Transient failures are retrie
 from collections.abc import Iterator
 from typing import Any
 
+from keboola.component.exceptions import UserException
+
 from client.http_base import SignedHttpClient
 
 _RECORD_PATH = "/services/rest/record/v1"
@@ -79,6 +81,20 @@ class RestClient(SignedHttpClient):
             if not payload.get("hasMore"):
                 break
             offset += page_size
+
+    def server_time(self) -> str:
+        """Return NetSuite's own current UTC timestamp (ISO-8601) for incremental watermarks.
+
+        The watermark must come from NetSuite's clock, not the container's, to avoid timezone/skew
+        drift (spec §2). SuiteQL is available on every TBA account, so we read it there. The exact
+        SQL is confirmed against the live sandbox in the smoke-test phase.
+        """
+        query = "SELECT TO_CHAR(SYSTIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS server_time"
+        payload = self.suiteql_page(query, limit=1)
+        items = payload.get("items") or []
+        if not items:
+            raise UserException("Could not read NetSuite server time for the incremental watermark.")
+        return next(iter(items[0].values()))
 
     # ---- metadata catalog ------------------------------------------------
 
