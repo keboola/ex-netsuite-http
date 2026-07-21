@@ -12,6 +12,7 @@ focuses on correct auth-header construction (the part unit-testable without a li
 import logging
 from collections.abc import Callable
 from functools import cached_property
+from pathlib import Path
 from typing import Any
 
 import lxml.etree as etree
@@ -24,6 +25,12 @@ from client.auth import Signer
 _DEFAULT_VERSION = "2023_2"
 _CORE_NS = "urn:core_{v}.platform.webservices.netsuite.com"
 _MESSAGES_NS = "urn:messages_{v}.platform.webservices.netsuite.com"
+
+# The version-pinned WSDL + its imported XSD tree are bundled in the repo (see scratchpad/bundle_wsdl
+# .py). The WSDL is account-agnostic — it carries no account id/host, only the generic service address
+# which we override per account at runtime — so loading it from disk is safe and, crucially, lets SOAP
+# cassettes REPLAY offline in CI without fetching the WSDL over the network.
+_BUNDLED_WSDL_DIR = Path(__file__).parent / "wsdl"
 
 
 class SoapClient:
@@ -46,6 +53,11 @@ class SoapClient:
 
     @property
     def wsdl_url(self) -> str:
+        """Locate the WSDL: prefer the repo-bundled copy (offline — works in CI / VCR replay with no
+        network), else fall back to the account's live WSDL endpoint."""
+        local = _BUNDLED_WSDL_DIR / "wsdl" / f"v{self.version}_0" / "netsuite.wsdl"
+        if local.exists():
+            return local.as_uri()
         # e.g. https://<host>/wsdl/v2023_2_0/netsuite.wsdl
         return f"{self.signer.rest_base_url}/wsdl/v{self.version}_0/netsuite.wsdl"
 

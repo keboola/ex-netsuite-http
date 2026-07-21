@@ -30,10 +30,14 @@ def test_token_passport_header_built_from_signer():
     assert client.signer.token_passport(nonce="abc123", timestamp="1600000000")["signature"] in xml
 
 
-def test_wsdl_url_derived_from_account():
+def test_wsdl_url_prefers_bundled_local_copy():
+    """The version-pinned WSDL is bundled in the repo so SOAP cassettes replay offline (no network)."""
     client = _client()
-    assert client.wsdl_url.startswith("https://1234567-sb1.suitetalk.api.netsuite.com/wsdl/")
-    assert client.wsdl_url.endswith("/netsuite.wsdl")
+    url = client.wsdl_url
+    assert url.startswith("file://")  # loaded from disk, not the network
+    assert url.endswith("/wsdl/v2023_2_0/netsuite.wsdl")
+    # the bundled tree must not embed any account-specific host
+    assert "suitetalk.api.netsuite.com" not in url
 
 
 class _FakeBinding:
