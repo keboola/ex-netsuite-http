@@ -45,7 +45,6 @@ def test_full_load_runs_query_verbatim():
 def test_windowing_splits_large_range():
     row = _row(
         query="SELECT id FROM tx WHERE trandate BETWEEN :window_start AND :window_end",
-        window_column="trandate",
         window_size=30,
         load_type="incremental_load",
     )

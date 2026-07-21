@@ -111,13 +111,24 @@ class SuiteQLRow(BaseRow):
     mode: Literal["suiteql"]
     query: str = ""
     page_limit: int = 1000
-    window_column: str = ""
+    # Date windowing keeps large pulls under NetSuite's ~100k-row result ceiling by running the
+    # query once per window. The user drives it by placing ':window_start'/':window_end' placeholders
+    # in their query's WHERE clause; window_size is the span (in days) of each window.
     window_size: int = 0
 
     @model_validator(mode="after")
     def _validate_required(self, info: ValidationInfo) -> SuiteQLRow:
-        if _is_runtime(info) and not self.query:
+        if not _is_runtime(info):
+            return self
+        if not self.query:
             raise UserException("suiteql mode requires a 'query'.")
+        # Windowing is placeholder-driven; a window_size with no placeholders would silently do nothing.
+        if self.window_size > 0 and not (":window_start" in self.query and ":window_end" in self.query):
+            raise UserException(
+                "window_size enables date windowing, which requires ':window_start' and ':window_end' "
+                "placeholders in the query WHERE clause (e.g. WHERE lastmodifieddate BETWEEN "
+                "':window_start' AND ':window_end'). Add both placeholders or set window_size to 0."
+            )
         return self
 
 

@@ -158,3 +158,32 @@ def test_sync_action_construction_stays_lenient():
 def test_extra_filters_typed_as_list_of_dict():
     cfg = _cfg(mode="saved_search", saved_search_id="cs", extra_filters=[{"field": "status"}])
     assert cfg.row.extra_filters == [{"field": "status"}]
+
+
+# ---- NTH5: window_size requires the windowing placeholders -----------------
+
+
+def test_window_size_without_placeholders_rejected_at_run():
+    cfg = _cfg(mode="suiteql", query="SELECT id FROM tx", load_type="full_load", window_size=30)
+    with pytest.raises(UserException, match="window_start"):
+        cfg.validate_for_run()
+
+
+def test_window_size_with_placeholders_passes():
+    cfg = _cfg(
+        mode="suiteql",
+        query="SELECT id FROM tx WHERE trandate BETWEEN ':window_start' AND ':window_end'",
+        load_type="full_load",
+        window_size=30,
+    )
+    cfg.validate_for_run()  # no raise
+
+
+def test_no_windowing_when_window_size_zero():
+    cfg = _cfg(mode="suiteql", query="SELECT id FROM tx", load_type="full_load", window_size=0)
+    cfg.validate_for_run()  # no placeholder requirement
+
+
+def test_window_column_field_removed():
+    cfg = _cfg(mode="suiteql", query="SELECT 1", load_type="full_load")
+    assert not hasattr(cfg.row, "window_column")

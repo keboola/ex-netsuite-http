@@ -99,7 +99,7 @@
     "query": {
       "type": "string",
       "title": "SuiteQL Query",
-      "description": "SuiteQL query. Use ':state' for the incremental lower bound, and ':window_start'/':window_end' for date windowing.",
+      "description": "SuiteQL query. Use ':state' for the incremental lower bound. For date windowing (to stay under the 100k-row ceiling) put ':window_start' and ':window_end' placeholders in the WHERE clause, e.g. WHERE lastmodifieddate BETWEEN ':window_start' AND ':window_end'.",
       "format": "editor",
       "options": {
         "dependencies": {
@@ -111,21 +111,10 @@
       },
       "propertyOrder": 20
     },
-    "window_column": {
-      "type": "string",
-      "title": "Window Column",
-      "description": "Optional: column used for date windowing to stay under the 100k-row ceiling.",
-      "options": {
-        "dependencies": {
-          "mode": "suiteql"
-        }
-      },
-      "propertyOrder": 21
-    },
     "window_size": {
       "type": "integer",
       "title": "Window Size (days)",
-      "description": "Optional: days per date window. 0 disables windowing.",
+      "description": "Days per date window, to stay under the 100k-row result ceiling. 0 disables windowing. When > 0, the query MUST contain both ':window_start' and ':window_end' placeholders.",
       "default": 0,
       "options": {
         "dependencies": {
