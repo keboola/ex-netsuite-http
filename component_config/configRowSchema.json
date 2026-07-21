@@ -32,6 +32,7 @@
       "title": "Record Type",
       "description": "NetSuite record type to extract.",
       "format": "select",
+      "enum": [],
       "options": {
         "dependencies": {
           "mode": "record"
@@ -50,7 +51,8 @@
       "format": "select",
       "uniqueItems": true,
       "items": {
-        "type": "string"
+        "type": "string",
+        "enum": []
       },
       "options": {
         "dependencies": {
@@ -98,13 +100,13 @@
       "type": "string",
       "title": "SuiteQL Query",
       "description": "SuiteQL query. Use ':state' for the incremental lower bound, and ':window_start'/':window_end' for date windowing.",
-      "format": "textarea",
+      "format": "editor",
       "options": {
         "dependencies": {
           "mode": "suiteql"
         },
-        "ace": {
-          "mode": "sql"
+        "editor": {
+          "mode": "text/x-sql"
         }
       },
       "propertyOrder": 20
@@ -152,6 +154,7 @@
       "title": "Saved Search",
       "description": "Saved search to execute (customsearch_*).",
       "format": "select",
+      "enum": [],
       "options": {
         "dependencies": {
           "mode": "saved_search"
