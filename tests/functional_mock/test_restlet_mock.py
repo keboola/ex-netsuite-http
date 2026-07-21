@@ -59,7 +59,9 @@ def test_get_basic_maps_rows_from_record_path():
 @responses.activate
 def test_post_with_body_sends_body_and_maps_rows():
     responses.add(responses.POST, _RESTLET_URL, json=_fixture("restlet_post.json"), status=200)
-    ext = _extractor(method="POST", request_body={"filter": "active"}, record_path="data.results", load_type="full_load")
+    ext = _extractor(
+        method="POST", request_body={"filter": "active"}, record_path="data.results", load_type="full_load"
+    )
     rows = list(ext.extract().tables[0].rows)
     assert [r["id"] for r in rows] == ["10"]
     sent = responses.calls[0].request

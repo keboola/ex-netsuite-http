@@ -68,7 +68,7 @@ def main() -> None:
 
     files = sorted(_DEST.rglob("*"))
     n = sum(1 for f in files if f.is_file())
-    print(f"mirrored {n} files, {total_bytes/1024:.0f} KB total, into {_DEST.relative_to(ROOT)}")
+    print(f"mirrored {n} files, {total_bytes / 1024:.0f} KB total, into {_DEST.relative_to(ROOT)}")
     # sanity: does any mirrored file contain a real account host/id? (must be NO)
     acct_present = any("suitetalk.api.netsuite.com" in f.read_text(errors="ignore") for f in files if f.is_file())
     print(f"any account-specific host in bundled files: {acct_present}")
