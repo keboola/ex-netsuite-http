@@ -50,11 +50,12 @@ def test_state_captured_from_server_time_when_incremental():
     assert result.tables[0].incremental is True
 
 
-def test_full_load_writes_no_state():
+def test_full_load_also_persists_watermark():
+    # NTH2: full loads persist the watermark so a later full->incremental switch resumes correctly.
     row = _row(load_type="full_load")
     ext, _ = _extractor(row, [{"id": "1"}])
     result = ext.extract()
-    assert result.state == {}
+    assert result.state == {"last_run": "2024-05-01T00:00:00Z"}
 
 
 def test_incremental_since_passed_as_query_param():

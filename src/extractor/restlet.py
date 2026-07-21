@@ -58,6 +58,8 @@ class RestletExtractor(Extractor):
         return ExtractionResult(tables=[table], state=state)
 
     def _capture_watermark(self) -> str | None:
-        if not self.row.incremental or self.server_time_provider is None:
+        # Persist a watermark on every successful run (incl. full loads) so a later full->incremental
+        # switch resumes from this run instead of re-pulling all history (spec §2).
+        if self.server_time_provider is None:
             return None
         return self.server_time_provider()

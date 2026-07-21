@@ -23,6 +23,9 @@ from extractor.base import ExtractionResult, Extractor, OutputTable
 
 _STATE_LAST_RUN = "last_run"
 
+# Candidate per-line identifier columns used to form a child-table composite PK, in priority order.
+_CHILD_KEY_CANDIDATES = ("line", "lineuniquekey", "id", "key", "sequence", "seq")
+
 
 class RecordExtractor(Extractor):
     def __init__(
@@ -43,12 +46,7 @@ class RecordExtractor(Extractor):
 
         q = self._build_q()
         logging.info("Fetching record collection '%s' (q=%s)", self.row.record_type, q)
-        records = self.rest_client.iter_record_collection(
-            self.row.record_type,
-            q=q,
-            fields=self.row.fields or None,
-            limit=self.row.page_limit,
-        )
+        records = self._fetch_records(q)
 
         table_name = self.row.output_table_name or self.row.record_type
         if self.row.sublist_handling == SublistHandling.child_table:
@@ -59,10 +57,46 @@ class RecordExtractor(Extractor):
         state = {_STATE_LAST_RUN: new_watermark} if new_watermark else {}
         return ExtractionResult(tables=tables, state=state)
 
+    # ---- fetch -----------------------------------------------------------
+
+    def _fetch_records(self, q: str | None) -> list[dict[str, Any]]:
+        """Fetch the full records (eagerly, so a fetch failure surfaces before state is written).
+
+        The REST record collection is ID-only (spec §9 risk 5): it returns ids + HATEOAS links, not
+        field values or sublists. So whenever field values or sublist data are wanted we GET each
+        record with ``expandSubResources`` (accepting the documented N+1 cost, spec §9 risk 5).
+        """
+        collection = self.rest_client.iter_record_collection(
+            self.row.record_type,
+            q=q,
+            fields=self.row.fields or None,
+            limit=self.row.page_limit,
+        )
+        if not self._needs_detail():
+            return list(collection)
+        records: list[dict[str, Any]] = []
+        for item in collection:
+            record_id = item.get("id")
+            if record_id is None:
+                records.append(item)
+                continue
+            records.append(self.rest_client.get_record(self.row.record_type, str(record_id), expand_sub_resources=True))
+        return records
+
+    def _needs_detail(self) -> bool:
+        # Record mode always needs more than the ID-only collection: either specific field values or
+        # sublist data (flatten/child_table). The per-id GET with expandSubResources supplies both.
+        return bool(self.row.fields) or self.row.sublist_handling in (
+            SublistHandling.flatten,
+            SublistHandling.child_table,
+        )
+
     # ---- watermark / filter ---------------------------------------------
 
     def _capture_watermark(self) -> str | None:
-        if not self.row.incremental or self.server_time_provider is None:
+        # Persist a watermark on every successful run (incl. full loads) so a later full->incremental
+        # switch resumes from this run instead of re-pulling all history (spec §2).
+        if self.server_time_provider is None:
             return None
         return self.server_time_provider()
 
@@ -120,15 +154,43 @@ class RecordExtractor(Extractor):
             )
         ]
         for sublist_name, rows in child_rows.items():
+            # Child tables must share the parent's load semantics: on an incremental run a child table
+            # left as full-load with no PK would be truncated to the current batch every run (data
+            # loss). Propagate incremental and a composite PK [_parent_id, <line key>].
             tables.append(
                 OutputTable(
                     name=f"{table_name}_{sublist_name}",
                     rows=rows,
-                    primary_key=[],
-                    incremental=False,
+                    primary_key=self._child_primary_key(sublist_name, rows),
+                    incremental=self.row.incremental,
                 )
             )
         return tables
+
+    def _child_primary_key(self, sublist_name: str, rows: list[dict[str, Any]]) -> list[str]:
+        """Derive [_parent_id, <line key>] for a child table; reject incremental if none is sound."""
+        child_key = self._derive_child_key(rows)
+        if child_key is not None:
+            return ["_parent_id", child_key]
+        if self.row.incremental:
+            raise UserException(
+                f"Incremental child-table extraction of sublist '{sublist_name}' needs a per-line key "
+                f"to form a composite primary key, but none of {list(_CHILD_KEY_CANDIDATES)} was found. "
+                "Use load_type=full_load, or switch sublist_handling to flatten."
+            )
+        # Full load replaces the whole child table each run, so a PK is not required.
+        return []
+
+    @staticmethod
+    def _derive_child_key(rows: list[dict[str, Any]]) -> str | None:
+        keys: set[str] = set()
+        for row in rows:
+            keys.update(row.keys())
+        keys.discard("_parent_id")
+        for candidate in _CHILD_KEY_CANDIDATES:
+            if candidate in keys:
+                return candidate
+        return None
 
     @staticmethod
     def _is_sublist(value: Any) -> bool:

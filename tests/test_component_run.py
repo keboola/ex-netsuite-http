@@ -83,13 +83,17 @@ def test_record_flatten_happy_path(tmp_path):
         "load_type": "full_load",
     }
     data_dir = _make_datadir(tmp_path, params)
-    records = [{"id": "1", "entityid": "ACME"}]
-    with mock.patch.object(RestClient, "iter_record_collection", return_value=iter(records)):
+    # Collection is ID-only; full field values come from the per-id expandSubResources GET (I3).
+    with (
+        mock.patch.object(RestClient, "iter_record_collection", return_value=iter([{"id": "1"}])),
+        mock.patch.object(RestClient, "get_record", return_value={"id": "1", "entityid": "ACME"}),
+        mock.patch.object(RestClient, "server_time", return_value="2024-05-01T00:00:00Z"),
+    ):
         _run(data_dir)
     out = _read_csv(data_dir, "customer")
     assert out[0]["entityid"] == "ACME"
-    # full load writes no state
-    assert not (data_dir / "out" / "state.json").exists()
+    # NTH2: even a full load persists the watermark for a later full->incremental switch.
+    assert _read_state(data_dir) == {"last_run": "2024-05-01T00:00:00Z"}
 
 
 def test_restlet_happy_path(tmp_path):
@@ -103,7 +107,10 @@ def test_restlet_happy_path(tmp_path):
         "load_type": "full_load",
     }
     data_dir = _make_datadir(tmp_path, params)
-    with mock.patch.object(RestletClient, "iter_records", return_value=iter([{"id": "9"}])):
+    with (
+        mock.patch.object(RestletClient, "iter_records", return_value=iter([{"id": "9"}])),
+        mock.patch.object(RestClient, "server_time", return_value="2024-05-01T00:00:00Z"),
+    ):
         _run(data_dir)
     out = _read_csv(data_dir, "restlet_out")
     assert out[0]["id"] == "9"
@@ -132,7 +139,10 @@ def test_manifest_written_with_schema(tmp_path):
         "load_type": "full_load",
     }
     data_dir = _make_datadir(tmp_path, params)
-    with mock.patch.object(RestClient, "iter_suiteql", return_value=iter([{"id": 1}])):
+    with (
+        mock.patch.object(RestClient, "iter_suiteql", return_value=iter([{"id": 1}])),
+        mock.patch.object(RestClient, "server_time", return_value="2024-05-01T00:00:00Z"),
+    ):
         _run(data_dir)
     manifest = json.loads((data_dir / "out" / "tables" / "customers.csv.manifest").read_text())
     assert manifest  # a manifest exists
