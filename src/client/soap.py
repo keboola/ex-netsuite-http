@@ -89,6 +89,18 @@ class SoapClient:
         """Fetch multiple records by reference."""
         return self._client.service.getList(record=record_refs, _soapheaders=self._soapheaders())
 
+    def run_saved_search(self, saved_search_id: str, page_size: int = 1000) -> Any:
+        """Execute a saved search by id and return the first page's raw SOAP result.
+
+        Building the typed advanced-search record for an arbitrary saved search is record-type
+        specific; the exact construction is confirmed against the sandbox in the VCR phase. The
+        paging loop and result mapping live in the extractor.
+        """
+        search_type = self._client.get_type(f"{{{_MESSAGES_NS.format(v=self.version)}}}SearchRequest")
+        search_record = search_type(savedSearchId=saved_search_id)
+        prefs = self._search_preferences(page_size)
+        return self._client.service.search(searchRecord=search_record, _soapheaders=self._soapheaders() + [prefs])
+
     def get_saved_search(self, search_type: str) -> Any:
         """List saved searches of a given record type (powers the listSavedSearches sync action)."""
         record_type = self._client.get_type(f"{{{_CORE_NS.format(v=self.version)}}}GetSavedSearchRecord")
