@@ -71,7 +71,7 @@ def test_429_retry_after_is_honored():
     responses.add(responses.POST, SUITEQL_URL, status=429, headers={"Retry-After": "7"})
     responses.add(responses.POST, SUITEQL_URL, json={"items": [{"id": "1"}], "hasMore": False}, status=200)
     client = _client()
-    with mock.patch("client.rest.time.sleep") as sleep:
+    with mock.patch("client.http_base.time.sleep") as sleep:
         rows = list(client.iter_suiteql("SELECT id FROM customer"))
     assert [r["id"] for r in rows] == ["1"]
     sleep.assert_called_once_with(7.0)
@@ -82,7 +82,7 @@ def test_transient_5xx_retried_with_backoff():
     responses.add(responses.POST, SUITEQL_URL, status=503)
     responses.add(responses.POST, SUITEQL_URL, json={"items": [], "hasMore": False}, status=200)
     client = _client()
-    with mock.patch("client.rest.time.sleep") as sleep:
+    with mock.patch("client.http_base.time.sleep") as sleep:
         rows = list(client.iter_suiteql("SELECT 1"))
     assert rows == []
     assert sleep.call_count == 1
@@ -110,7 +110,7 @@ def test_5xx_gives_up_after_max_retries():
         responses.add(responses.POST, SUITEQL_URL, status=500)
     client = _client()
     client.max_retries = 2
-    with mock.patch("client.rest.time.sleep"):
+    with mock.patch("client.http_base.time.sleep"):
         with pytest.raises(UserException):
             list(client.iter_suiteql("SELECT 1"))
 
