@@ -33,7 +33,7 @@ class RestletClient(SignedHttpClient):
         params: dict[str, Any] = {"script": script_id, "deploy": deploy_id}
         if query_params:
             params.update(query_params)
-        response = self._signed_request(method.upper(), self._url, params=params, json_body=body)
+        response = self._signed_request(method.upper(), self._url, params=params, json_body=body, surface_body=True)
         return response.json()
 
     def iter_records(

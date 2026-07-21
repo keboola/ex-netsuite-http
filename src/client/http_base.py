@@ -9,6 +9,8 @@ else exponential backoff with jitter; transient ``5xx`` uses backoff; ``401``/``
 import logging
 import random
 import time
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import requests
@@ -43,6 +45,7 @@ class SignedHttpClient:
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | list[Any] | None = None,
         extra_headers: dict[str, str] | None = None,
+        surface_body: bool = False,
     ) -> requests.Response:
         params = {k: str(v) for k, v in (params or {}).items()}
         attempt = 0
@@ -50,18 +53,31 @@ class SignedHttpClient:
             headers = {"Authorization": self.signer.authorization_header(method, url, query_params=params)}
             if extra_headers:
                 headers.update(extra_headers)
-            response = self.session.request(
-                method,
-                url,
-                params=params or None,
-                json=json_body,
-                headers=headers,
-                timeout=self.timeout,
-            )
+            try:
+                response = self.session.request(
+                    method,
+                    url,
+                    params=params or None,
+                    json=json_body,
+                    headers=headers,
+                    timeout=self.timeout,
+                )
+            except requests.exceptions.RequestException as exc:
+                # Transient network failure (connection reset, read timeout, DNS blip): fold into the
+                # same retry/backoff path as 5xx instead of escaping as an unhandled exit-2 crash.
+                attempt += 1
+                if attempt > self.max_retries:
+                    raise UserException(
+                        f"NetSuite request to {url} failed after {self.max_retries} retries "
+                        f"(network error: {type(exc).__name__})."
+                    ) from exc
+                self._sleep_on_network_error(exc, attempt)
+                continue
             if response.status_code in (401, 403):
+                logging.debug("Auth/permission failure body: %s", response.text[:500])
                 raise UserException(
                     f"NetSuite authentication/permission failed ({response.status_code}). "
-                    f"Check the account id, TBA credentials and role permissions. Response: {response.text[:500]}"
+                    "Check the account id, TBA credentials and role permissions."
                 )
             if response.status_code == 429 or response.status_code in _RETRYABLE:
                 attempt += 1
@@ -73,14 +89,48 @@ class SignedHttpClient:
                 self._sleep_before_retry(response, attempt)
                 continue
             if not response.ok:
-                raise UserException(f"NetSuite request to {url} failed ({response.status_code}): {response.text[:500]}")
+                logging.debug("Failed response body (%s): %s", response.status_code, response.text[:500])
+                message = f"NetSuite request to {url} failed ({response.status_code})."
+                # RESTlet errors are surfaced with body (spec §4); REST/SuiteQL keep the message plain.
+                if surface_body:
+                    message = f"{message} Response: {response.text[:500]}"
+                raise UserException(message)
             return response
+
+    def _backoff_delay(self, attempt: int) -> float:
+        return self.backoff_base * (2 ** (attempt - 1)) + random.uniform(0, self.backoff_base)
 
     def _sleep_before_retry(self, response: requests.Response, attempt: int) -> None:
         retry_after = response.headers.get("Retry-After") if response.status_code == 429 else None
-        if retry_after is not None:
-            delay = float(retry_after)
-        else:
-            delay = self.backoff_base * (2 ** (attempt - 1)) + random.uniform(0, self.backoff_base)
+        delay = self._parse_retry_after(retry_after)
+        if delay is None:
+            delay = self._backoff_delay(attempt)
         logging.warning("NetSuite returned %s; retrying in %.1fs (attempt %s).", response.status_code, delay, attempt)
         time.sleep(delay)
+
+    def _sleep_on_network_error(self, exc: Exception, attempt: int) -> None:
+        delay = self._backoff_delay(attempt)
+        logging.warning(
+            "NetSuite request network error (%s); retrying in %.1fs (attempt %s).",
+            type(exc).__name__,
+            delay,
+            attempt,
+        )
+        time.sleep(delay)
+
+    @staticmethod
+    def _parse_retry_after(retry_after: str | None) -> float | None:
+        """Parse a ``Retry-After`` header: delta-seconds, or an RFC 7231 HTTP-date, else None."""
+        if not retry_after:
+            return None
+        try:
+            return float(retry_after)
+        except ValueError:
+            pass
+        try:
+            when = parsedate_to_datetime(retry_after)
+        except TypeError, ValueError:
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=UTC)
+        return max(0.0, (when - datetime.now(UTC)).total_seconds())

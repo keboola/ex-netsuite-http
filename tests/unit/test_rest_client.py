@@ -3,6 +3,7 @@
 from unittest import mock
 
 import pytest
+import requests
 import responses
 from keboola.component.exceptions import UserException
 
@@ -134,3 +135,69 @@ def test_suiteql_prefer_transient_header_sent():
     client = _client()
     list(client.iter_suiteql("SELECT 1"))
     assert responses.calls[0].request.headers["Prefer"] == "transient"
+
+
+# ---- I5: transient network errors folded into the retry/backoff path ------
+
+
+@responses.activate
+def test_network_error_retried_then_recovers():
+    responses.add(responses.POST, SUITEQL_URL, body=requests.exceptions.ConnectionError("reset"))
+    responses.add(responses.POST, SUITEQL_URL, json={"items": [{"id": "1"}], "hasMore": False}, status=200)
+    client = _client()
+    with mock.patch("client.http_base.time.sleep") as sleep:
+        rows = list(client.iter_suiteql("SELECT 1"))
+    assert [r["id"] for r in rows] == ["1"]
+    assert sleep.call_count == 1
+
+
+@responses.activate
+def test_network_error_exhausts_to_user_exception():
+    for _ in range(6):
+        responses.add(responses.POST, SUITEQL_URL, body=requests.exceptions.ReadTimeout("slow"))
+    client = _client()
+    client.max_retries = 2
+    with mock.patch("client.http_base.time.sleep"):
+        with pytest.raises(UserException):
+            list(client.iter_suiteql("SELECT 1"))
+
+
+# ---- NTH1: RFC-7231 HTTP-date Retry-After --------------------------------
+
+
+@responses.activate
+def test_retry_after_http_date_does_not_crash():
+    responses.add(
+        responses.POST,
+        SUITEQL_URL,
+        status=429,
+        headers={"Retry-After": "Wed, 21 Oct 2099 07:28:00 GMT"},
+    )
+    responses.add(responses.POST, SUITEQL_URL, json={"items": [{"id": "1"}], "hasMore": False}, status=200)
+    client = _client()
+    with mock.patch("client.http_base.time.sleep") as sleep:
+        rows = list(client.iter_suiteql("SELECT 1"))
+    assert [r["id"] for r in rows] == ["1"]
+    sleep.assert_called_once()
+    assert sleep.call_args[0][0] > 0  # a positive delay derived from the future date
+
+
+# ---- NTH3: raw response body must not leak into the user-facing message ----
+
+
+@responses.activate
+def test_auth_failure_message_excludes_response_body():
+    responses.add(responses.GET, RECORD_URL, status=401, json={"error": "secret-internal-detail"})
+    client = _client()
+    with pytest.raises(UserException) as exc:
+        list(client.iter_record_collection("customer"))
+    assert "secret-internal-detail" not in str(exc.value)
+
+
+@responses.activate
+def test_error_message_excludes_response_body():
+    responses.add(responses.POST, SUITEQL_URL, status=400, json={"error": "secret-internal-detail"})
+    client = _client()
+    with pytest.raises(UserException) as exc:
+        list(client.iter_suiteql("SELECT 1"))
+    assert "secret-internal-detail" not in str(exc.value)
