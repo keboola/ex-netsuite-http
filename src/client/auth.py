@@ -58,6 +58,10 @@ class Signer(ABC):
     def restlet_base_url(self) -> str:
         """Base URL for the RESTlet surface."""
 
+    @abstractmethod
+    def token_passport(self, nonce: str | None = None, timestamp: str | None = None) -> dict[str, str]:
+        """Return the SOAP TokenPassport pieces (the second auth shape) for the SOAP client."""
+
 
 class TBASigner(Signer):
     """NetSuite Token-Based Authentication signer (OAuth 1.0a, HMAC-SHA256)."""
