@@ -1,0 +1,4 @@
+{
+  "_comment": "SYNTHETIC fixture: page 2 (no next_cursor -> loop terminates).",
+  "rows": [{"id": "2"}]
+}

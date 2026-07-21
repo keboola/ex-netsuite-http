@@ -76,6 +76,25 @@ Run the test suite and perform lint checks using this command:
 docker-compose run --rm test
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Test coverage
+-------------
+
+- **Unit / mock tests** (`tests/unit/`, `tests/test_*.py`) — config, auth (known-answer
+  vectors), client and extractor logic.
+- **Live-recorded VCR functional tests** (`tests/functional/`) — `record`, `suiteql`, and the
+  sync actions are recorded against a real NetSuite sandbox with `keboola.datadirtest` and
+  replayed deterministically in CI (no credentials needed). Cassettes are sanitized (see
+  `VCR_SANITIZERS` in `src/component.py`): no account id, TBA secret, or PII is committed.
+- **Mock-based functional tests** (`tests/functional_mock/`) — `saved_search` and `restlet`
+  are covered with **synthetic** responses, **not** live recordings. The sandbox contained no
+  `customsearch_*` saved search and no deployed RESTlet, and the available credentials had no
+  permission to create either, so live cassettes could not be recorded. These tests drive the
+  real extractors/clients against synthetic response fixtures modeled on NetSuite's documented
+  shapes. To record real cassettes later: create a `customsearch_*` saved search / deploy a
+  RESTlet in the sandbox, then run `scratchpad/record_cassettes.py` with the corresponding
+  config (the SuiteTalk WSDL is bundled in `src/client/wsdl/`, so SOAP cassettes replay offline).
+  See `tests/functional/README.md` for details.
+
 Integration
 ===========
 

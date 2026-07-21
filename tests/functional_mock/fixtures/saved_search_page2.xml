@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SYNTHETIC fixture — NOT a live recording.
+  Page 2 of the 2-page saved-search result, as returned by `searchMoreWithId` (pageIndex=2). Same
+  documented shape as page 1. See saved_search_page1.xml for the full rationale.
+-->
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:platformMsgs="urn:messages_2023_2.platform.webservices.netsuite.com"
+  xmlns:platformCore="urn:core_2023_2.platform.webservices.netsuite.com"
+  xmlns:listRel="urn:relationships_2023_2.lists.webservices.netsuite.com">
+  <soapenv:Body>
+    <platformMsgs:searchMoreWithIdResponse>
+      <platformMsgs:searchResult>
+        <platformCore:status isSuccess="true"/>
+        <platformCore:totalRecords>2</platformCore:totalRecords>
+        <platformCore:totalPages>2</platformCore:totalPages>
+        <platformCore:pageIndex>2</platformCore:pageIndex>
+        <platformCore:searchId>WEBSERVICES_SYNTHETIC_SEARCH_1</platformCore:searchId>
+        <platformCore:recordList>
+          <platformCore:record xsi:type="listRel:Customer" internalId="102">
+            <listRel:entityId>Globex</listRel:entityId>
+            <listRel:companyName>Globex Corporation</listRel:companyName>
+          </platformCore:record>
+        </platformCore:recordList>
+      </platformMsgs:searchResult>
+    </platformMsgs:searchMoreWithIdResponse>
+  </soapenv:Body>
+</soapenv:Envelope>
