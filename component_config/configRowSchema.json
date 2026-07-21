@@ -1,1 +1,332 @@
-{}
+{
+  "type": "object",
+  "title": "Extraction Target",
+  "required": [
+    "mode"
+  ],
+  "properties": {
+    "mode": {
+      "type": "string",
+      "title": "Mode",
+      "description": "What to extract. The component picks REST vs SOAP internally.",
+      "enum": [
+        "record",
+        "suiteql",
+        "saved_search",
+        "restlet"
+      ],
+      "options": {
+        "enum_titles": [
+          "Record (REST Record API)",
+          "SuiteQL",
+          "Saved Search (SOAP)",
+          "RESTlet"
+        ]
+      },
+      "default": "suiteql",
+      "propertyOrder": 1
+    },
+
+    "record_type": {
+      "type": "string",
+      "title": "Record Type",
+      "description": "NetSuite record type to extract.",
+      "format": "select",
+      "options": {
+        "dependencies": {
+          "mode": "record"
+        },
+        "async": {
+          "label": "Load record types",
+          "action": "listRecordTypes"
+        }
+      },
+      "propertyOrder": 10
+    },
+    "fields": {
+      "type": "array",
+      "title": "Fields",
+      "description": "Optional column projection; leave empty for all fields.",
+      "format": "select",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      },
+      "options": {
+        "dependencies": {
+          "mode": "record"
+        },
+        "async": {
+          "label": "Load fields",
+          "action": "listFields"
+        }
+      },
+      "propertyOrder": 11
+    },
+    "query_filter": {
+      "type": "string",
+      "title": "Query Filter (q)",
+      "description": "Optional REST 'q' filter expression.",
+      "options": {
+        "dependencies": {
+          "mode": "record"
+        }
+      },
+      "propertyOrder": 12
+    },
+    "sublist_handling": {
+      "type": "string",
+      "title": "Sublist Handling",
+      "enum": [
+        "flatten",
+        "child_table"
+      ],
+      "options": {
+        "enum_titles": [
+          "Flatten into parent (JSON column)",
+          "Separate child table keyed to parent id"
+        ],
+        "dependencies": {
+          "mode": "record"
+        }
+      },
+      "default": "flatten",
+      "propertyOrder": 13
+    },
+
+    "query": {
+      "type": "string",
+      "title": "SuiteQL Query",
+      "description": "SuiteQL query. Use ':state' for the incremental lower bound, and ':window_start'/':window_end' for date windowing.",
+      "format": "textarea",
+      "options": {
+        "dependencies": {
+          "mode": "suiteql"
+        },
+        "ace": {
+          "mode": "sql"
+        }
+      },
+      "propertyOrder": 20
+    },
+    "window_column": {
+      "type": "string",
+      "title": "Window Column",
+      "description": "Optional: column used for date windowing to stay under the 100k-row ceiling.",
+      "options": {
+        "dependencies": {
+          "mode": "suiteql"
+        }
+      },
+      "propertyOrder": 21
+    },
+    "window_size": {
+      "type": "integer",
+      "title": "Window Size (days)",
+      "description": "Optional: days per date window. 0 disables windowing.",
+      "default": 0,
+      "options": {
+        "dependencies": {
+          "mode": "suiteql"
+        }
+      },
+      "propertyOrder": 22
+    },
+    "validate_suiteql": {
+      "type": "button",
+      "format": "sync-action",
+      "options": {
+        "dependencies": {
+          "mode": "suiteql"
+        },
+        "async": {
+          "label": "Validate SuiteQL",
+          "action": "validateSuiteQL"
+        }
+      },
+      "propertyOrder": 23
+    },
+
+    "saved_search_id": {
+      "type": "string",
+      "title": "Saved Search",
+      "description": "Saved search to execute (customsearch_*).",
+      "format": "select",
+      "options": {
+        "dependencies": {
+          "mode": "saved_search"
+        },
+        "async": {
+          "label": "Load saved searches",
+          "action": "listSavedSearches"
+        }
+      },
+      "propertyOrder": 30
+    },
+    "page_size": {
+      "type": "integer",
+      "title": "Page Size",
+      "default": 1000,
+      "options": {
+        "dependencies": {
+          "mode": "saved_search"
+        }
+      },
+      "propertyOrder": 31
+    },
+    "extra_filters": {
+      "type": "array",
+      "title": "Extra Filters",
+      "description": "Optional additional search filters (advanced).",
+      "items": {
+        "type": "object"
+      },
+      "options": {
+        "dependencies": {
+          "mode": "saved_search"
+        }
+      },
+      "propertyOrder": 32
+    },
+
+    "script_id": {
+      "type": "string",
+      "title": "Script ID",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        }
+      },
+      "propertyOrder": 40
+    },
+    "deploy_id": {
+      "type": "string",
+      "title": "Deploy ID",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        }
+      },
+      "propertyOrder": 41
+    },
+    "method": {
+      "type": "string",
+      "title": "HTTP Method",
+      "enum": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
+      "default": "GET",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        }
+      },
+      "propertyOrder": 42
+    },
+    "query_params": {
+      "type": "object",
+      "title": "Query Parameters",
+      "description": "Optional query parameters sent to the RESTlet.",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        }
+      },
+      "propertyOrder": 43
+    },
+    "request_body": {
+      "type": "object",
+      "title": "Request Body",
+      "description": "Optional JSON body (for POST/PUT).",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        }
+      },
+      "propertyOrder": 44
+    },
+    "record_path": {
+      "type": "string",
+      "title": "Record Path",
+      "description": "Dotted path to the rows in the response, e.g. data.results. Empty means the top-level response.",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        }
+      },
+      "propertyOrder": 45
+    },
+    "pagination_cursor_field": {
+      "type": "string",
+      "title": "Pagination Cursor Field",
+      "description": "Optional response field holding the next-page cursor.",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        }
+      },
+      "propertyOrder": 46
+    },
+    "preview_restlet": {
+      "type": "button",
+      "format": "sync-action",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        },
+        "async": {
+          "label": "Preview RESTlet",
+          "action": "previewRestlet"
+        }
+      },
+      "propertyOrder": 47
+    },
+
+    "output_table_name": {
+      "type": "string",
+      "title": "Output Table Name",
+      "description": "Destination table name. Defaults to a name derived from the target.",
+      "propertyOrder": 60
+    },
+    "primary_key": {
+      "type": "array",
+      "title": "Primary Key",
+      "description": "Columns forming the primary key (required for incremental upsert).",
+      "items": {
+        "type": "string"
+      },
+      "propertyOrder": 61
+    },
+    "load_type": {
+      "type": "string",
+      "title": "Load Type",
+      "enum": [
+        "full_load",
+        "incremental_load"
+      ],
+      "options": {
+        "enum_titles": [
+          "Full load",
+          "Incremental load"
+        ]
+      },
+      "default": "incremental_load",
+      "propertyOrder": 62
+    },
+    "incremental_field": {
+      "type": "string",
+      "title": "Incremental Field",
+      "description": "Watermark column (e.g. lastmodifieddate) used for incremental loading.",
+      "default": "lastmodifieddate",
+      "options": {
+        "dependencies": {
+          "load_type": "incremental_load"
+        }
+      },
+      "propertyOrder": 63
+    }
+  }
+}

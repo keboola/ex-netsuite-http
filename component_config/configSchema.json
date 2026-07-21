@@ -1,19 +1,58 @@
 {
   "type": "object",
-  "title": "extractor configuration",
+  "title": "NetSuite Connection",
   "required": [
-    "print_hello"
+    "account_id",
+    "#consumer_key",
+    "#consumer_secret",
+    "#token_id",
+    "#token_secret"
   ],
   "properties": {
-    "print_hello": {
-      "type": "boolean",
-      "title": "Print Hello",
+    "account_id": {
+      "type": "string",
+      "title": "Account ID",
+      "description": "NetSuite account id, e.g. 1234567_SB1 (used for the realm and host derivation).",
       "propertyOrder": 1
     },
-    "debug": {
-      "type": "boolean",
-      "title": "Debug",
+    "#consumer_key": {
+      "type": "string",
+      "title": "Consumer Key",
+      "description": "TBA integration consumer key.",
+      "format": "password",
       "propertyOrder": 2
+    },
+    "#consumer_secret": {
+      "type": "string",
+      "title": "Consumer Secret",
+      "description": "TBA integration consumer secret.",
+      "format": "password",
+      "propertyOrder": 3
+    },
+    "#token_id": {
+      "type": "string",
+      "title": "Token ID",
+      "description": "TBA access token id.",
+      "format": "password",
+      "propertyOrder": 4
+    },
+    "#token_secret": {
+      "type": "string",
+      "title": "Token Secret",
+      "description": "TBA access token secret.",
+      "format": "password",
+      "propertyOrder": 5
+    },
+    "test_connection": {
+      "type": "button",
+      "format": "sync-action",
+      "propertyOrder": 6,
+      "options": {
+        "async": {
+          "label": "Test Connection",
+          "action": "testConnection"
+        }
+      }
     }
   }
 }
