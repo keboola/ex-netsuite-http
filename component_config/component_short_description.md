@@ -1,1 +1,1 @@
-Enter short description of the component here.
+Extracts records, SuiteQL query results, saved searches, and RESTlet responses from NetSuite.

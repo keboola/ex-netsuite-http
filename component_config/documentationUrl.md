@@ -1,1 +1,1 @@
-/blob/master/README.md
+https://github.com/keboola/ex-netsuite-http/blob/main/README.md
