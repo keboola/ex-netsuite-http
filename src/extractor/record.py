@@ -13,6 +13,7 @@ wired pending sandbox coverage and user sign-off.
 import json
 import logging
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
 from keboola.component.exceptions import UserException
@@ -25,6 +26,21 @@ _STATE_LAST_RUN = "last_run"
 
 # Candidate per-line identifier columns used to form a child-table composite PK, in priority order.
 _CHILD_KEY_CANDIDATES = ("line", "lineuniquekey", "id", "key", "sequence", "seq")
+
+
+def _ns_date(iso: str) -> str:
+    """Render an ISO-8601 UTC watermark as the ``M/D/YYYY`` date the REST record ``q`` grammar wants.
+
+    NetSuite's Record collection ``q`` date operators (``ON_OR_AFTER`` …) reject an ISO-8601
+    timestamp (400) — confirmed against the live sandbox — and accept ``M/D/YYYY``. The watermark is
+    therefore truncated to date granularity for the ``q`` filter (a day of overlap is re-pulled and
+    de-duplicated by the primary key on the incremental upsert).
+    """
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return iso
+    return f"{dt.month}/{dt.day}/{dt.year}"
 
 
 class RecordExtractor(Extractor):
@@ -105,7 +121,7 @@ class RecordExtractor(Extractor):
         if self.row.query_filter:
             clauses.append(self.row.query_filter)
         if self.row.incremental and self.since:
-            clauses.append(f'{self.row.incremental_field} ON_OR_AFTER "{self.since}"')
+            clauses.append(f'{self.row.incremental_field} ON_OR_AFTER "{_ns_date(self.since)}"')
         if not clauses:
             return None
         return " AND ".join(f"({c})" for c in clauses)

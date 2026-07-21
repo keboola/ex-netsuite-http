@@ -22,6 +22,15 @@ _STATE_PLACEHOLDER = ":state"
 _WINDOW_START = ":window_start"
 _WINDOW_END = ":window_end"
 
+# NetSuite SuiteQL rejects a bare quoted ISO literal in a date/timestamp comparison (400); the
+# watermark (ISO-8601 UTC from ``server_time``) must be wrapped in TO_TIMESTAMP with a matching mask.
+_TS_MASK = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'
+
+
+def _ts(value: str) -> str:
+    """Render an ISO-8601 UTC watermark as a SuiteQL TO_TIMESTAMP literal NetSuite accepts."""
+    return f"TO_TIMESTAMP('{value}', '{_TS_MASK}')"
+
 
 class SuiteQLExtractor(Extractor):
     def __init__(
@@ -66,7 +75,7 @@ class SuiteQLExtractor(Extractor):
         windows = self._windows(self.since, end)
         rows: list[dict[str, Any]] = []
         for start, stop in windows:
-            query = self.row.query.replace(_WINDOW_START, f"'{start}'").replace(_WINDOW_END, f"'{stop}'")
+            query = self.row.query.replace(_WINDOW_START, _ts(start)).replace(_WINDOW_END, _ts(stop))
             logging.info("Running SuiteQL window %s -> %s", start, stop)
             rows.extend(self.rest_client.iter_suiteql(query, limit=self.row.page_limit))
         return rows
@@ -77,7 +86,7 @@ class SuiteQLExtractor(Extractor):
     def _bind_state(self, query: str) -> str:
         if self.row.incremental and _STATE_PLACEHOLDER in query:
             lower = self.since or "1970-01-01T00:00:00Z"
-            return query.replace(_STATE_PLACEHOLDER, f"'{lower}'")
+            return query.replace(_STATE_PLACEHOLDER, _ts(lower))
         return query
 
     def _windows(self, since: str | None, end: str | None) -> list[tuple[str, str]]:

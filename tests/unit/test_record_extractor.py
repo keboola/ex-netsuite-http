@@ -40,7 +40,7 @@ def test_incremental_filter_added_to_q():
     ext, client = _extractor(row, [{"id": "1"}], since="2024-01-01T00:00:00Z")
     ext.extract()
     _, kwargs = client.iter_record_collection.call_args
-    assert 'lastModifiedDate ON_OR_AFTER "2024-01-01T00:00:00Z"' in kwargs["q"]
+    assert 'lastModifiedDate ON_OR_AFTER "1/1/2024"' in kwargs["q"]
 
 
 def test_user_query_filter_and_incremental_combined():

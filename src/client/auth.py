@@ -17,7 +17,7 @@ import hmac
 import secrets
 import time
 from abc import ABC, abstractmethod
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qsl, quote, urlsplit
 
 # RFC 3986 unreserved characters — everything else is percent-encoded.
 _UNRESERVED = "-._~"
@@ -142,10 +142,16 @@ class TBASigner(Signer):
     ) -> str:
         """Build the RFC 5849 signature base string. ``realm`` is intentionally excluded."""
         params = self._oauth_params(nonce, timestamp)
+        split = urlsplit(url)
+        # RFC 5849 §3.4.1.3: every query parameter present in the request URL must be part of the
+        # signature base string. Record-collection paging follows an absolute ``links.next`` href
+        # that carries limit/offset/q in the URL itself (not the params dict), so extract them here —
+        # otherwise the re-signed next page is rejected by NetSuite with 401.
+        for key, value in parse_qsl(split.query, keep_blank_values=True):
+            params[key] = value
         if query_params:
             params.update({k: str(v) for k, v in query_params.items()})
         normalized = "&".join(f"{_pct(k)}={_pct(v)}" for k, v in sorted(params.items()))
-        split = urlsplit(url)
         base_url = f"{split.scheme}://{split.netloc}{split.path}"
         return f"{method.upper()}&{_pct(base_url)}&{_pct(normalized)}"
 

@@ -12,6 +12,7 @@ import time
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 import requests
 from keboola.component.exceptions import UserException
@@ -68,7 +69,7 @@ class SignedHttpClient:
                 attempt += 1
                 if attempt > self.max_retries:
                     raise UserException(
-                        f"NetSuite request to {url} failed after {self.max_retries} retries "
+                        f"NetSuite request to {urlsplit(url).path} failed after {self.max_retries} retries "
                         f"(network error: {type(exc).__name__})."
                     ) from exc
                 self._sleep_on_network_error(exc, attempt)
@@ -83,14 +84,14 @@ class SignedHttpClient:
                 attempt += 1
                 if attempt > self.max_retries:
                     raise UserException(
-                        f"NetSuite request to {url} failed after {self.max_retries} retries "
+                        f"NetSuite request to {urlsplit(url).path} failed after {self.max_retries} retries "
                         f"(last status {response.status_code})."
                     )
                 self._sleep_before_retry(response, attempt)
                 continue
             if not response.ok:
                 logging.debug("Failed response body (%s): %s", response.status_code, response.text[:500])
-                message = f"NetSuite request to {url} failed ({response.status_code})."
+                message = f"NetSuite request to {urlsplit(url).path} failed ({response.status_code})."
                 # RESTlet errors are surfaced with body (spec §4); REST/SuiteQL keep the message plain.
                 if surface_body:
                     message = f"{message} Response: {response.text[:500]}"

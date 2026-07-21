@@ -86,10 +86,11 @@ class RestClient(SignedHttpClient):
         """Return NetSuite's own current UTC timestamp (ISO-8601) for incremental watermarks.
 
         The watermark must come from NetSuite's clock, not the container's, to avoid timezone/skew
-        drift (spec §2). SuiteQL is available on every TBA account, so we read it there. The exact
-        SQL is confirmed against the live sandbox in the smoke-test phase.
+        drift (spec §2). SuiteQL is available on every TBA account, so we read it there. Confirmed
+        against the live sandbox: ``SYSTIMESTAMP AT TIME ZONE 'UTC'`` is rejected (400) by NetSuite
+        SuiteQL, whereas ``SYS_EXTRACT_UTC(SYSTIMESTAMP)`` returns a proper UTC ISO-8601 timestamp.
         """
-        query = "SELECT TO_CHAR(SYSTIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS server_time"
+        query = 'SELECT TO_CHAR(SYS_EXTRACT_UTC(SYSTIMESTAMP), \'YYYY-MM-DD"T"HH24:MI:SS"Z"\') AS server_time FROM DUAL'
         payload = self.suiteql_page(query, limit=1)
         items = payload.get("items") or []
         if not items:

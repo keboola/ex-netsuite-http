@@ -69,6 +69,26 @@ class SoapClient:
                 f"({type(exc).__name__}). Check the account id and network reachability."
             ) from exc
 
+    @cached_property
+    def _service(self):
+        """Service proxy rebound to the account-specific SuiteTalk endpoint.
+
+        The pinned WSDL advertises NetSuite's legacy generic host
+        (``webservices.netsuite.com``), which accounts now reject with *"you must use
+        account-specific domains with this SOAP web services endpoint."* Rebind the port to the
+        account-specific host derived from the account id (same host as the REST surface) so every
+        SOAP operation targets a domain the account accepts.
+        """
+        client = self._client
+        binding_name = None
+        for service in client.wsdl.services.values():
+            for port in service.ports.values():
+                binding_name = port.binding.name
+        if binding_name is None:
+            raise UserException("NetSuite SOAP WSDL exposes no service binding; cannot bind endpoint.")
+        address = f"{self.signer.rest_base_url}/services/NetSuitePort_{self.version}"
+        return client.create_service(binding_name, address)
+
     # ---- error translation ----------------------------------------------
 
     @staticmethod
@@ -121,29 +141,27 @@ class SoapClient:
         prefs = self._search_preferences(page_size)
         return self._invoke(
             "search",
-            lambda: self._client.service.search(searchRecord=search_record, _soapheaders=self._soapheaders() + [prefs]),
+            lambda: self._service.search(searchRecord=search_record, _soapheaders=self._soapheaders() + [prefs]),
         )
 
     def search_more_with_id(self, search_id: str, page_index: int) -> Any:
         """Fetch a subsequent page of a running search (``searchMoreWithId``)."""
         return self._invoke(
             "searchMoreWithId",
-            lambda: self._client.service.searchMoreWithId(
+            lambda: self._service.searchMoreWithId(
                 searchId=search_id, pageIndex=page_index, _soapheaders=self._soapheaders()
             ),
         )
 
     def get(self, record_ref: Any) -> Any:
         """Fetch a single record by reference."""
-        return self._invoke(
-            "get", lambda: self._client.service.get(record=record_ref, _soapheaders=self._soapheaders())
-        )
+        return self._invoke("get", lambda: self._service.get(record=record_ref, _soapheaders=self._soapheaders()))
 
     def get_list(self, record_refs: list[Any]) -> Any:
         """Fetch multiple records by reference."""
         return self._invoke(
             "getList",
-            lambda: self._client.service.getList(record=record_refs, _soapheaders=self._soapheaders()),
+            lambda: self._service.getList(record=record_refs, _soapheaders=self._soapheaders()),
         )
 
     def run_saved_search(
@@ -172,7 +190,7 @@ class SoapClient:
         prefs = self._search_preferences(page_size)
         return self._invoke(
             "search",
-            lambda: self._client.service.search(searchRecord=search_record, _soapheaders=self._soapheaders() + [prefs]),
+            lambda: self._service.search(searchRecord=search_record, _soapheaders=self._soapheaders() + [prefs]),
         )
 
     @staticmethod
@@ -190,7 +208,7 @@ class SoapClient:
         record_type = self._client.get_type(f"{{{_CORE_NS.format(v=self.version)}}}GetSavedSearchRecord")
         return self._invoke(
             "getSavedSearch",
-            lambda: self._client.service.getSavedSearch(
+            lambda: self._service.getSavedSearch(
                 record=record_type(searchType=search_type), _soapheaders=self._soapheaders()
             ),
         )

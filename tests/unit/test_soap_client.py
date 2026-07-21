@@ -34,3 +34,54 @@ def test_wsdl_url_derived_from_account():
     client = _client()
     assert client.wsdl_url.startswith("https://1234567-sb1.suitetalk.api.netsuite.com/wsdl/")
     assert client.wsdl_url.endswith("/netsuite.wsdl")
+
+
+class _FakeBinding:
+    def __init__(self, name):
+        self.name = name
+
+
+class _FakePort:
+    def __init__(self, binding):
+        self.binding = binding
+
+
+class _FakeService:
+    def __init__(self, ports):
+        self.ports = ports
+
+
+class _FakeWsdl:
+    def __init__(self, services):
+        self.services = services
+
+
+class _FakeZeepClient:
+    def __init__(self):
+        self.wsdl = _FakeWsdl({"svc": _FakeService({"port": _FakePort(_FakeBinding("{ns}NetSuiteBinding"))})})
+        self.created_with = None
+
+    def create_service(self, binding_name, address):
+        self.created_with = (binding_name, address)
+        return f"service@{address}"
+
+
+def test_service_rebinds_to_account_specific_endpoint():
+    """The pinned WSDL advertises the generic host; the client must rebind to the account host.
+
+    Regression guard for the live-sandbox defect: NetSuite rejects the WSDL's default
+    ``webservices.netsuite.com`` endpoint with "you must use account-specific domains".
+    """
+    client = _client()
+    fake = _FakeZeepClient()
+    # Short-circuit the cached_property so no real WSDL is loaded.
+    client.__dict__["_client"] = fake
+
+    service = client._service
+
+    assert fake.created_with is not None
+    binding_name, address = fake.created_with
+    assert binding_name == "{ns}NetSuiteBinding"
+    assert address == "https://1234567-sb1.suitetalk.api.netsuite.com/services/NetSuitePort_2023_2"
+    assert "webservices.netsuite.com" not in address
+    assert service == f"service@{address}"
