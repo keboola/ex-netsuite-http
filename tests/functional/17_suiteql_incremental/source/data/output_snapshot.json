@@ -1,0 +1,24 @@
+{
+  "files": {},
+  "hash_algorithm": "sha256",
+  "tables": {
+    "suiteql_incremental.csv": {
+      "columns": [
+        "links",
+        "companyname",
+        "id",
+        "lastmodifieddate"
+      ],
+      "hash": "sha256:f75c98d457f832ba10a1d8278a9f763f58d233e4d8eaa0b797ef40bfee23662e",
+      "row_count": 6,
+      "size_bytes": 276
+    },
+    "suiteql_incremental.csv.manifest": {
+      "columns": null,
+      "hash": "sha256:17e29183f6bfda8ad9bd5780a6c81379b7ac93a505f7bcf24f5026031524687b",
+      "row_count": null,
+      "size_bytes": 492
+    }
+  },
+  "version": "1.0"
+}

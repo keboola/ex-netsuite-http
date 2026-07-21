@@ -1,0 +1,18 @@
+{
+  "exit_code": null,
+  "stderr": "",
+  "logs": [
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Fetching record collection 'customrecord_ste_lookup_state_scenario' (q=None)",
+      "timestamp": "2026-07-21T12:54:32.633Z"
+    },
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Wrote 4 rows to table 'custom_state_scenario'.",
+      "timestamp": "2026-07-21T12:54:33.626Z"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "exit_code": null,
+  "stderr": "",
+  "logs": [
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Fetching record collection 'customer' (q=(id BETWEEN [2206, 2251]))",
+      "timestamp": "2026-07-21T12:54:26.108Z"
+    },
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Wrote 5 rows to table 'customer_paged'.",
+      "timestamp": "2026-07-21T12:54:29.325Z"
+    }
+  ]
+}

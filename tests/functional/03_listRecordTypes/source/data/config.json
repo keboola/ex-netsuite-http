@@ -1,0 +1,10 @@
+{
+  "action": "listRecordTypes",
+  "parameters": {
+    "account_id": "1234567_SB1",
+    "#consumer_key": "DUMMY_CK",
+    "#consumer_secret": "DUMMY_CS",
+    "#token_id": "DUMMY_TI",
+    "#token_secret": "DUMMY_TS"
+  }
+}

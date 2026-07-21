@@ -1,0 +1,5 @@
+{
+  "exit_code": 1,
+  "stderr": "NetSuite authentication/permission failed (401). Check the account id, TBA credentials and role permissions.",
+  "logs": []
+}

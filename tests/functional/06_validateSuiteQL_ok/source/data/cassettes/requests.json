@@ -1,0 +1,7 @@
+{
+  "_metadata": {"freeze_time": null, "keboola_vcr_version": "0.6.0", "recorded_at": "2026-07-21T12:54:22.533319+00:00"},
+  "interactions": [
+    {"request": {"body": "{\"q\": \"SELECT id, companyname FROM customer\"}", "headers": {"Accept": ["*/*"], "Content-Length": ["45"], "Content-Type": ["application/json"]}, "method": "POST", "uri": "https://account.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=1&offset=0"}, "response": {"body": {"string": "{\"links\":[{\"rel\":\"next\",\"href\":\"https://account.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=1&offset=1\"},{\"rel\":\"last\",\"href\":\"https://account.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=1&offset=786\"},{\"rel\":\"self\",\"href\":\"https://account.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=1&offset=0\",\"method\":\"POST\"}],\"count\":1,\"hasMore\":true,\"items\":[{\"links\":[],\"companyname\":\"10X Innovation Gmbh & Co. KG\",\"id\":\"4279\"}],\"offset\":0,\"totalResults\":787}\n"}, "headers": {"Content-Type": ["application/vnd.oracle.resource+json; type=collection; charset=UTF-8"], "content-length": ["522"]}, "status": {"code": 200, "message": "OK"}}}
+  ],
+  "version": 1
+}

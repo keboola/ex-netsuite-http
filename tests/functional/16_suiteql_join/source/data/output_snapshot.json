@@ -1,0 +1,24 @@
+{
+  "files": {},
+  "hash_algorithm": "sha256",
+  "tables": {
+    "suiteql_join.csv": {
+      "columns": [
+        "links",
+        "companyname",
+        "invoice_id",
+        "tranid"
+      ],
+      "hash": "sha256:451d4cc2d1bce0676c54440b6b07c6ca7227e780da506cd8d75d0e4ef8e1acf7",
+      "row_count": 17,
+      "size_bytes": 727
+    },
+    "suiteql_join.csv.manifest": {
+      "columns": null,
+      "hash": "sha256:7db1625dc0c8ad020848bd8f8b48e16f3a43f2d45852859bdb6da90419e7e328",
+      "row_count": null,
+      "size_bytes": 491
+    }
+  },
+  "version": "1.0"
+}

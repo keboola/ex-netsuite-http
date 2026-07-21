@@ -8,6 +8,7 @@ the row's mode → run it → write the output tables, manifests and state. All 
 import csv
 import json
 import logging
+import re
 from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any
@@ -15,6 +16,7 @@ from typing import Any
 from keboola.component.base import ComponentBase
 from keboola.component.dao import BaseType, ColumnDefinition, TableDefinition
 from keboola.component.exceptions import UserException
+from keboola.vcr import CallbackSanitizer, DefaultSanitizer, UrlPatternSanitizer
 
 from client.auth import TBASigner
 from client.rest import RestClient
@@ -27,6 +29,86 @@ from extractor.restlet import RestletExtractor
 from extractor.saved_search import SavedSearchExtractor
 from extractor.suiteql import SuiteQLExtractor
 from sync_actions import SyncActionsMixin
+
+# --------------------------------------------------------------------------------------------------
+# VCR sanitizers — scrub every secret/PII/nonce from recorded cassettes (spec §7).
+#
+# The framework always prepends a DefaultSanitizer built from the recording secrets, which (a) strips
+# every non-whitelisted header — so the whole ``Authorization: OAuth …`` header (realm, oauth_nonce,
+# oauth_timestamp, oauth_signature) disappears — and (b) exact-value replaces the four ``#`` TBA
+# secrets wherever they appear (incl. the SOAP ``consumerKey``/``token`` elements). The sanitizers
+# below add what that cannot know statically:
+#   * the NetSuite account id, which is embedded in EVERY host (``<acct>.suitetalk|restlets.api…``)
+#     and in the HATEOAS ``links`` of REST response bodies — rewritten to a fixed ``account`` label
+#     by regex so no real account id is ever committed, and so replay still matches (the same rewrite
+#     runs on the live request before matching);
+#   * the SOAP ``TokenPassport`` fields (account/nonce/timestamp/signature) carried in the request
+#     XML body — redacted by element;
+#   * email addresses in response/output bodies — redacted as PII.
+# Matching is method+scheme+host+port+path+query (never the signed header); the host rewrite is
+# deterministic so it matches on replay.
+# --------------------------------------------------------------------------------------------------
+
+_NS_HOST_RE = re.compile(r"//[A-Za-z0-9-]+\.(suitetalk|restlets)\.api\.netsuite\.com")
+_NS_HOST_REPL = r"//account.\1.api.netsuite.com"
+# TokenPassport element contents (optionally namespace-prefixed), keeping the open/close tags intact.
+_SOAP_TP_RE = re.compile(
+    r"(<(?:\w+:)?(account|consumerKey|token|nonce|timestamp|signature)(?:\s[^>]*)?>)(.*?)(</(?:\w+:)?\2>)",
+    re.DOTALL,
+)
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+
+def _as_text(value: Any) -> tuple[str | None, str | None]:
+    """Return (text, encoding) for a str/bytes body, or (None, None) if not textual."""
+    if isinstance(value, str):
+        return value, None
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="ignore"), "utf-8"
+    return None, None
+
+
+def _scrub_request(request: Any) -> Any:
+    """Rewrite the account host in the URI and redact SOAP TokenPassport fields in the body."""
+    if getattr(request, "uri", None):
+        request.uri = _NS_HOST_RE.sub(_NS_HOST_REPL, request.uri)
+    body = getattr(request, "body", None)
+    text, encoding = _as_text(body)
+    if text is not None and "<" in text:
+        scrubbed = _SOAP_TP_RE.sub(r"\1REDACTED\4", text)
+        request.body = scrubbed.encode(encoding) if encoding else scrubbed
+    return request
+
+
+def _scrub_response(response: dict) -> dict:
+    """Rewrite the account host and redact email PII in the response body (record-time only)."""
+    body = response.get("body") if isinstance(response, dict) else None
+    if not isinstance(body, dict) or "string" not in body:
+        return response
+    text, encoding = _as_text(body["string"])
+    if text is None:
+        return response
+    scrubbed = _EMAIL_RE.sub("REDACTED@example.com", _NS_HOST_RE.sub(_NS_HOST_REPL, text))
+    body["string"] = scrubbed.encode(encoding) if encoding else scrubbed
+    return response
+
+
+VCR_SANITIZERS = [
+    DefaultSanitizer(
+        additional_sensitive_fields=[
+            "consumer_key",
+            "consumer_secret",
+            "token_id",
+            "token_secret",
+            "oauth_signature",
+            "oauth_nonce",
+            "signature",
+            "nonce",
+        ]
+    ),
+    UrlPatternSanitizer(patterns=[(r"//[A-Za-z0-9-]+\.(suitetalk|restlets)\.api\.netsuite\.com", _NS_HOST_REPL)]),
+    CallbackSanitizer(before_request=_scrub_request, before_response=_scrub_response),
+]
 
 _STATE_LAST_RUN = "last_run"
 

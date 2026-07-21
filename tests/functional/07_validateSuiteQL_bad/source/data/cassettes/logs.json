@@ -1,0 +1,5 @@
+{
+  "exit_code": 1,
+  "stderr": "NetSuite request to /services/rest/query/v1/suiteql failed (400).",
+  "logs": []
+}
