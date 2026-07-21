@@ -108,6 +108,20 @@ class SoapClient:
             record=record_type(searchType=search_type), _soapheaders=self._soapheaders()
         )
 
+    def list_saved_searches(self, search_type: str = "transaction") -> list[dict[str, Any]]:
+        """Return saved searches as ``{"internalId", "scriptId", "name"}`` dicts for the UI dropdown."""
+        from zeep.helpers import serialize_object
+
+        raw = self.get_saved_search(search_type)
+        result = getattr(raw, "recordRefList", None) or getattr(raw, "recordList", None)
+        records = getattr(result, "recordRef", None) or getattr(result, "record", None) or []
+        searches: list[dict[str, Any]] = []
+        for record in records:
+            serialized = serialize_object(record, dict)
+            if isinstance(serialized, dict):
+                searches.append(serialized)
+        return searches
+
     def _search_preferences(self, page_size: int) -> etree._Element:
         messages = _MESSAGES_NS.format(v=self.version)
         prefs = etree.Element(f"{{{messages}}}searchPreferences")

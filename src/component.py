@@ -26,6 +26,7 @@ from extractor.record import RecordExtractor
 from extractor.restlet import RestletExtractor
 from extractor.saved_search import SavedSearchExtractor
 from extractor.suiteql import SuiteQLExtractor
+from sync_actions import SyncActionsMixin
 
 _STATE_LAST_RUN = "last_run"
 
@@ -37,7 +38,7 @@ _BASE_TYPES = {
 }
 
 
-class Component(ComponentBase):
+class Component(SyncActionsMixin, ComponentBase):
     """NetSuite HTTP extractor component."""
 
     def __init__(self):
@@ -84,12 +85,6 @@ class Component(ComponentBase):
         if self.params.row is None:
             raise UserException("Missing required parameter 'mode' (the extraction target).")
         return self.params.row
-
-    def build_signer(self) -> TBASigner:
-        conn = self.params.connection
-        if not all([conn.account_id, conn.consumer_key, conn.consumer_secret, conn.token_id, conn.token_secret]):
-            raise UserException("account_id and all four TBA credentials are required.")
-        return TBASigner(conn.account_id, conn.consumer_key, conn.consumer_secret, conn.token_id, conn.token_secret)
 
     def _load_since(self, incremental: bool) -> str | None:
         if not incremental:
