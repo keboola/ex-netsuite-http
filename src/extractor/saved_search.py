@@ -37,9 +37,6 @@ class SavedSearchExtractor(Extractor):
         # Capture the watermark from NetSuite's clock BEFORE fetching (spec §2).
         new_watermark = self._capture_watermark()
 
-        if self.row.extra_filters:
-            logging.warning("extra_filters are configured but layering them is a deferred variant; ignoring.")
-
         logging.info("Executing saved search '%s' via SOAP", self.row.saved_search_id)
         rows = self._fetch_rows()
 
@@ -55,7 +52,15 @@ class SavedSearchExtractor(Extractor):
     # ---- fetch + paging --------------------------------------------------
 
     def _fetch_rows(self) -> list[dict[str, Any]]:
-        raw = self.soap_client.run_saved_search(self.row.saved_search_id, page_size=self.row.page_size)
+        # Layer the incremental watermark (server-side lastModifiedDate filter) and any configured
+        # extra filters onto the saved search so the server filters, not the client.
+        since = self.since if self.row.incremental else None
+        raw = self.soap_client.run_saved_search(
+            self.row.saved_search_id,
+            page_size=self.row.page_size,
+            since=since,
+            extra_filters=self.row.extra_filters or None,
+        )
         result = self._search_result(raw)
         rows = [self._to_dict(r) for r in self._records(result)]
 
@@ -71,7 +76,9 @@ class SavedSearchExtractor(Extractor):
     # ---- watermark -------------------------------------------------------
 
     def _capture_watermark(self) -> str | None:
-        if not self.row.incremental or self.server_time_provider is None:
+        # Persist a watermark on every successful run (incl. full loads) so a later full->incremental
+        # switch resumes from this run instead of re-pulling all history (spec §2).
+        if self.server_time_provider is None:
             return None
         return self.server_time_provider()
 

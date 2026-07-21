@@ -10,10 +10,13 @@ focuses on correct auth-header construction (the part unit-testable without a li
 """
 
 import logging
+from collections.abc import Callable
 from functools import cached_property
 from typing import Any
 
 import lxml.etree as etree
+import requests
+from keboola.component.exceptions import UserException
 
 from client.auth import Signer
 
@@ -26,10 +29,20 @@ _MESSAGES_NS = "urn:messages_{v}.platform.webservices.netsuite.com"
 class SoapClient:
     """zeep-based SuiteTalk SOAP client with TBA TokenPassport auth."""
 
-    def __init__(self, signer: Signer, version: str = _DEFAULT_VERSION, wsdl_cache_dir: str = "/tmp"):
+    def __init__(
+        self,
+        signer: Signer,
+        version: str = _DEFAULT_VERSION,
+        wsdl_cache_dir: str = "/tmp",
+        timeout: int = 120,
+        operation_timeout: int | None = None,
+    ):
         self.signer = signer
         self.version = version
         self.wsdl_cache_dir = wsdl_cache_dir
+        self.timeout = timeout
+        # Time the SOAP call itself, not just the socket connect/read; defaults to the same budget.
+        self.operation_timeout = operation_timeout if operation_timeout is not None else timeout
 
     @property
     def wsdl_url(self) -> str:
@@ -41,12 +54,45 @@ class SoapClient:
         # Imported lazily so unit tests (and non-SOAP modes) never pay the WSDL-load cost.
         from zeep import Client
         from zeep.cache import SqliteCache
+        from zeep.exceptions import Error as ZeepError
         from zeep.transports import Transport
 
         cache = SqliteCache(path=f"{self.wsdl_cache_dir}/netsuite_wsdl_cache.db")
-        transport = Transport(cache=cache)
+        # Explicit transport timeouts so a hung endpoint fails fast instead of blocking the job.
+        transport = Transport(cache=cache, timeout=self.timeout, operation_timeout=self.operation_timeout)
         logging.info("Loading NetSuite WSDL from %s", self.wsdl_url)
-        return Client(self.wsdl_url, transport=transport)
+        try:
+            return Client(self.wsdl_url, transport=transport)
+        except (requests.exceptions.RequestException, ZeepError) as exc:
+            raise UserException(
+                f"Could not load the NetSuite SOAP WSDL from {self.wsdl_url} "
+                f"({type(exc).__name__}). Check the account id and network reachability."
+            ) from exc
+
+    # ---- error translation ----------------------------------------------
+
+    @staticmethod
+    def _invoke(operation: str, call: Callable[[], Any]) -> Any:
+        """Run a zeep call, translating SOAP faults and transport errors into UserException.
+
+        A ``zeep.exceptions.Fault`` is a server-side rejection (bad credentials, an invalid or
+        permission-denied saved search, a malformed request) — a user-fixable config error. Transport
+        errors (timeouts, connection resets) are transient infrastructure failures.
+        """
+        from zeep.exceptions import Fault, TransportError
+
+        try:
+            return call()
+        except Fault as exc:
+            raise UserException(
+                f"NetSuite SOAP {operation} was rejected: {exc.message or exc}. This usually means "
+                "invalid TBA credentials, a missing permission, or an invalid saved search id."
+            ) from exc
+        except (TransportError, requests.exceptions.RequestException) as exc:
+            raise UserException(
+                f"NetSuite SOAP {operation} failed to reach the server ({type(exc).__name__}). "
+                "This is usually transient; re-run the job."
+            ) from exc
 
     # ---- auth header -----------------------------------------------------
 
@@ -73,39 +119,80 @@ class SoapClient:
     def search(self, search_record: Any, page_size: int = 1000) -> Any:
         """Run a SOAP ``search`` with a fresh TokenPassport and the given page size."""
         prefs = self._search_preferences(page_size)
-        return self._client.service.search(searchRecord=search_record, _soapheaders=self._soapheaders() + [prefs])
+        return self._invoke(
+            "search",
+            lambda: self._client.service.search(searchRecord=search_record, _soapheaders=self._soapheaders() + [prefs]),
+        )
 
     def search_more_with_id(self, search_id: str, page_index: int) -> Any:
         """Fetch a subsequent page of a running search (``searchMoreWithId``)."""
-        return self._client.service.searchMoreWithId(
-            searchId=search_id, pageIndex=page_index, _soapheaders=self._soapheaders()
+        return self._invoke(
+            "searchMoreWithId",
+            lambda: self._client.service.searchMoreWithId(
+                searchId=search_id, pageIndex=page_index, _soapheaders=self._soapheaders()
+            ),
         )
 
     def get(self, record_ref: Any) -> Any:
         """Fetch a single record by reference."""
-        return self._client.service.get(record=record_ref, _soapheaders=self._soapheaders())
+        return self._invoke(
+            "get", lambda: self._client.service.get(record=record_ref, _soapheaders=self._soapheaders())
+        )
 
     def get_list(self, record_refs: list[Any]) -> Any:
         """Fetch multiple records by reference."""
-        return self._client.service.getList(record=record_refs, _soapheaders=self._soapheaders())
+        return self._invoke(
+            "getList",
+            lambda: self._client.service.getList(record=record_refs, _soapheaders=self._soapheaders()),
+        )
 
-    def run_saved_search(self, saved_search_id: str, page_size: int = 1000) -> Any:
+    def run_saved_search(
+        self,
+        saved_search_id: str,
+        page_size: int = 1000,
+        since: str | None = None,
+        extra_filters: list[dict[str, Any]] | None = None,
+    ) -> Any:
         """Execute a saved search by id and return the first page's raw SOAP result.
 
-        Building the typed advanced-search record for an arbitrary saved search is record-type
-        specific; the exact construction is confirmed against the sandbox in the VCR phase. The
-        paging loop and result mapping live in the extractor.
+        When ``since`` is supplied, an incremental ``lastModifiedDate onOrAfter`` criterion is layered
+        onto the search so the server filters (spec §4); ``extra_filters`` are additional criteria
+        layered the same way. Building the typed advanced-search record for an arbitrary saved search
+        is record-type specific, so the exact criteria typing is confirmed against the sandbox in the
+        VCR phase; here we attach the criteria the extractor computed. The paging loop and result
+        mapping live in the extractor.
         """
         search_type = self._client.get_type(f"{{{_MESSAGES_NS.format(v=self.version)}}}SearchRequest")
         search_record = search_type(savedSearchId=saved_search_id)
+        criteria = self._build_search_criteria(since, extra_filters)
+        if criteria:
+            # Layered filters (incremental watermark + extra_filters) — surfaced on the request so the
+            # server filters instead of the client. Exact typed criteria are VCR-verified.
+            search_record.criteria = criteria
         prefs = self._search_preferences(page_size)
-        return self._client.service.search(searchRecord=search_record, _soapheaders=self._soapheaders() + [prefs])
+        return self._invoke(
+            "search",
+            lambda: self._client.service.search(searchRecord=search_record, _soapheaders=self._soapheaders() + [prefs]),
+        )
+
+    @staticmethod
+    def _build_search_criteria(since: str | None, extra_filters: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+        """Assemble the layered search criteria (incremental watermark + configured extra filters)."""
+        criteria: list[dict[str, Any]] = []
+        if since:
+            criteria.append({"field": "lastModifiedDate", "operator": "onOrAfter", "value": since})
+        if extra_filters:
+            criteria.extend(extra_filters)
+        return criteria
 
     def get_saved_search(self, search_type: str) -> Any:
         """List saved searches of a given record type (powers the listSavedSearches sync action)."""
         record_type = self._client.get_type(f"{{{_CORE_NS.format(v=self.version)}}}GetSavedSearchRecord")
-        return self._client.service.getSavedSearch(
-            record=record_type(searchType=search_type), _soapheaders=self._soapheaders()
+        return self._invoke(
+            "getSavedSearch",
+            lambda: self._client.service.getSavedSearch(
+                record=record_type(searchType=search_type), _soapheaders=self._soapheaders()
+            ),
         )
 
     def list_saved_searches(self, search_type: str = "transaction") -> list[dict[str, Any]]:

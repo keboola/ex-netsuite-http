@@ -67,3 +67,37 @@ def test_state_captured_from_server_time():
     result = ext.extract()
     assert result.state == {"last_run": "2024-05-01T00:00:00Z"}
     assert result.tables[0].incremental is True
+
+
+def test_incremental_since_forwarded_as_server_side_filter():
+    # I1: the stored watermark must be applied as a lastModifiedDate criterion server-side.
+    client = mock.Mock()
+    client.run_saved_search.return_value = _result([{"id": "1"}])
+    ext = SavedSearchExtractor(
+        row=_row(load_type="incremental_load"),
+        soap_client=client,
+        since="2024-01-01T00:00:00Z",
+    )
+    ext.extract()
+    _, kwargs = client.run_saved_search.call_args
+    assert kwargs["since"] == "2024-01-01T00:00:00Z"
+
+
+def test_full_load_does_not_forward_since():
+    client = mock.Mock()
+    client.run_saved_search.return_value = _result([{"id": "1"}])
+    ext = SavedSearchExtractor(row=_row(load_type="full_load"), soap_client=client, since="2024-01-01T00:00:00Z")
+    ext.extract()
+    _, kwargs = client.run_saved_search.call_args
+    assert kwargs["since"] is None
+
+
+def test_extra_filters_forwarded_to_search():
+    # I2: extra_filters must be wired into the search, not logged and dropped.
+    client = mock.Mock()
+    client.run_saved_search.return_value = _result([{"id": "1"}])
+    filters = [{"field": "status", "operator": "anyOf", "value": "open"}]
+    ext = SavedSearchExtractor(row=_row(load_type="full_load", extra_filters=filters), soap_client=client)
+    ext.extract()
+    _, kwargs = client.run_saved_search.call_args
+    assert kwargs["extra_filters"] == filters
