@@ -49,7 +49,7 @@ class Component(SyncActionsMixin, ComponentBase):
 
     def run(self):
         """Validate → build signer → select extractor by mode → run → write output + state."""
-        row = self._require_row()
+        row = self.params.validate_for_run()
         signer = self.build_signer()
         rest_client = RestClient(signer)
         since = self._load_since(row.incremental)
@@ -80,11 +80,6 @@ class Component(SyncActionsMixin, ComponentBase):
         raise UserException(f"Unsupported mode: {getattr(row, 'mode', None)}")
 
     # ---- config / signer helpers ----------------------------------------
-
-    def _require_row(self) -> RecordRow | SuiteQLRow | SavedSearchRow | RestletRow:
-        if self.params.row is None:
-            raise UserException("Missing required parameter 'mode' (the extraction target).")
-        return self.params.row
 
     def _load_since(self, incremental: bool) -> str | None:
         if not incremental:

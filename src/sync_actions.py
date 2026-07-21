@@ -19,7 +19,7 @@ from client.auth import TBASigner
 from client.rest import RestClient
 from client.restlet import RestletClient
 from client.soap import SoapClient
-from configuration import Configuration, RestletRow, SuiteQLRow
+from configuration import Configuration, RecordRow, RestletRow, SuiteQLRow
 
 
 class SyncActionsMixin:
@@ -67,9 +67,10 @@ class SyncActionsMixin:
     @sync_action("listFields")
     def list_fields(self) -> list[SelectElement]:
         """Populate the fields dropdown from the metadata catalog for the chosen record_type."""
-        record_type = getattr(self.params.row, "record_type", "")
-        if not record_type:
+        row = self.params.row
+        if not isinstance(row, RecordRow) or not row.record_type:
             raise UserException("Select a record type first.")
+        record_type = row.record_type
         schema = self._rest_client().get_metadata_catalog(record_type)
         properties = schema.get("properties", {}) or {}
         return [SelectElement(value=name, label=name) for name in properties]

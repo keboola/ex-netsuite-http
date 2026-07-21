@@ -7,10 +7,28 @@ mode-discriminated row model (absent for config-level contexts such as ``testCon
 """
 
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from keboola.component.exceptions import UserException
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, computed_field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    ValidationInfo,
+    computed_field,
+    model_validator,
+)
+
+# Runtime-only validation context flag. Rows are constructed leniently during sync actions (the user
+# has not filled every field yet); the run-start path re-validates with this context so the
+# runtime-only rules below (required fields, incremental+PK) fire only for an actual extraction run.
+_RUNTIME_CONTEXT = {"runtime": True}
+
+
+def _is_runtime(info: ValidationInfo) -> bool:
+    return bool(info.context) and bool(info.context.get("runtime"))
 
 
 class LoadType(StrEnum):
@@ -61,6 +79,18 @@ class BaseRow(BaseModel):
     def incremental(self) -> bool:
         return self.load_type == LoadType.incremental_load
 
+    @model_validator(mode="after")
+    def _validate_incremental_pk(self, info: ValidationInfo) -> BaseRow:
+        # Guard against unbounded append: an incremental run with no primary key never upserts, so
+        # every run blindly appends the whole batch. Only enforced at run start (see _RUNTIME_CONTEXT)
+        # so partially-filled rows in sync actions still construct.
+        if _is_runtime(info) and self.incremental and not self.primary_key:
+            raise UserException(
+                "Incremental load requires a primary key so Storage can upsert; without one every "
+                "run appends the full batch. Set 'primary_key' or switch 'load_type' to full_load."
+            )
+        return self
+
 
 class RecordRow(BaseRow):
     mode: Literal["record"]
@@ -70,6 +100,12 @@ class RecordRow(BaseRow):
     sublist_handling: SublistHandling = SublistHandling.flatten
     page_limit: int = 1000
 
+    @model_validator(mode="after")
+    def _validate_required(self, info: ValidationInfo) -> RecordRow:
+        if _is_runtime(info) and not self.record_type:
+            raise UserException("record mode requires 'record_type'.")
+        return self
+
 
 class SuiteQLRow(BaseRow):
     mode: Literal["suiteql"]
@@ -78,12 +114,24 @@ class SuiteQLRow(BaseRow):
     window_column: str = ""
     window_size: int = 0
 
+    @model_validator(mode="after")
+    def _validate_required(self, info: ValidationInfo) -> SuiteQLRow:
+        if _is_runtime(info) and not self.query:
+            raise UserException("suiteql mode requires a 'query'.")
+        return self
+
 
 class SavedSearchRow(BaseRow):
     mode: Literal["saved_search"]
     saved_search_id: str = ""
     page_size: int = 1000
-    extra_filters: list[dict] = Field(default_factory=list)
+    extra_filters: list[dict[str, Any]] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_required(self, info: ValidationInfo) -> SavedSearchRow:
+        if _is_runtime(info) and not self.saved_search_id:
+            raise UserException("saved_search mode requires a 'saved_search_id'.")
+        return self
 
 
 class RestletRow(BaseRow):
@@ -91,10 +139,16 @@ class RestletRow(BaseRow):
     script_id: str = ""
     deploy_id: str = ""
     method: HttpMethod = HttpMethod.GET
-    query_params: dict = Field(default_factory=dict)
-    request_body: dict | None = None
+    query_params: dict[str, Any] = Field(default_factory=dict)
+    request_body: dict[str, Any] | None = None
     record_path: str = ""
     pagination_cursor_field: str = ""
+
+    @model_validator(mode="after")
+    def _validate_required(self, info: ValidationInfo) -> RestletRow:
+        if _is_runtime(info) and (not self.script_id or not self.deploy_id):
+            raise UserException("restlet mode requires both 'script_id' and 'deploy_id'.")
+        return self
 
 
 Row = Annotated[
@@ -114,6 +168,9 @@ class Configuration:
     """
 
     def __init__(self, **data):
+        # Lenient construction: sync actions build the config before every field is filled, so
+        # required-field / incremental rules are deferred to validate_for_run() at run start.
+        self._raw: dict[str, Any] = dict(data)
         try:
             self.connection = Connection(**data)
             self.row: RecordRow | SuiteQLRow | SavedSearchRow | RestletRow | None = None
@@ -121,4 +178,20 @@ class Configuration:
                 self.row = _ROW_ADAPTER.validate_python(data)
         except ValidationError as e:
             error_messages = [f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors()]
-            raise UserException(f"Validation Error: {', '.join(error_messages)}")
+            raise UserException(f"Validation Error: {', '.join(error_messages)}") from e
+
+    def validate_for_run(self) -> RecordRow | SuiteQLRow | SavedSearchRow | RestletRow:
+        """Re-validate the row for an actual run, enforcing required-field and incremental rules.
+
+        Returns the validated row. Raises :class:`UserException` when ``mode`` is absent or a
+        mode-essential field / primary key is missing (these are intentionally not enforced at
+        lenient construction time so sync actions keep working).
+        """
+        if self.row is None:
+            raise UserException("Missing required parameter 'mode' (the extraction target).")
+        try:
+            self.row = _ROW_ADAPTER.validate_python(self._raw, context=_RUNTIME_CONTEXT)
+        except ValidationError as e:
+            error_messages = [f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors()]
+            raise UserException(f"Validation Error: {', '.join(error_messages)}") from e
+        return self.row
