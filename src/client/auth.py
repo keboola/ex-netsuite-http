@@ -48,6 +48,16 @@ class Signer(ABC):
     ) -> str:
         """Return the value for the HTTP ``Authorization`` header."""
 
+    @property
+    @abstractmethod
+    def rest_base_url(self) -> str:
+        """Base URL for the REST/SuiteTalk REST surfaces."""
+
+    @property
+    @abstractmethod
+    def restlet_base_url(self) -> str:
+        """Base URL for the RESTlet surface."""
+
 
 class TBASigner(Signer):
     """NetSuite Token-Based Authentication signer (OAuth 1.0a, HMAC-SHA256)."""
