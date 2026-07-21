@@ -4,9 +4,14 @@ NOT live recordings. The sandbox contained no `customsearch_*` saved search and 
 had no permission to create one, so these tests stand in for live VCR cassettes. They drive the REAL
 ``SavedSearchExtractor`` against synthetic SOAP ``search`` / ``searchMoreWithId`` result objects
 parsed from the documented-shape envelope fixtures in ``fixtures/saved_search_page*.xml`` (the SOAP
-client boundary is faked because its zeep request-building can only be validated against a live saved
-search — see the Phase F notes). They assert the extractor maps records, follows searchMoreWithId
-paging, forwards extra_filters/incremental criteria, and writes state.
+client boundary is faked here to feed the extractor synthetic result objects). They assert the
+extractor maps records, follows searchMoreWithId paging, forwards
+search_record_type/extra_filters/incremental criteria, and writes state.
+
+The SOAP request SHAPE (``<RecordType>SearchAdvanced`` with ``savedSearchId`` + a typed
+``lastModifiedDate`` criterion) is separately validated offline against the bundled WSDL in
+``tests/unit/test_soap_client.py``; what remains unverified is only the live request/response
+round-trip (no sandbox saved search).
 
 Async saved-search execution is a spec §4 deferred variant (SavedSearchExtractor._run_async seam) and
 is intentionally NOT mocked here.
@@ -69,7 +74,13 @@ def _load_search_result(fixture: str) -> SimpleNamespace:
 
 
 def _row(**kw) -> SavedSearchRow:
-    params: dict[str, Any] = {"mode": "saved_search", "saved_search_id": "customsearch_synth", "output_table_name": "ss", **kw}
+    params: dict[str, Any] = {
+        "mode": "saved_search",
+        "saved_search_id": "customsearch_synth",
+        "search_record_type": "Transaction",
+        "output_table_name": "ss",
+        **kw,
+    }
     return SavedSearchRow.model_validate(params)
 
 
@@ -113,6 +124,7 @@ def test_extra_filters_and_incremental_forwarded_and_state_written():
     )
     result = ext.extract()
     _, kwargs = client.run_saved_search.call_args
+    assert kwargs["search_record_type"] == "Transaction"  # forwarded -> selects the SearchAdvanced type
     assert kwargs["extra_filters"] == filters
     assert kwargs["since"] == "2024-01-01T00:00:00Z"
     assert result.state == {"last_run": "2024-05-01T00:00:00Z"}

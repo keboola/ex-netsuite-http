@@ -135,13 +135,24 @@ class SuiteQLRow(BaseRow):
 class SavedSearchRow(BaseRow):
     mode: Literal["saved_search"]
     saved_search_id: str = ""
+    # The SuiteTalk SOAP mechanism runs a saved search via a typed ``<RecordType>SearchAdvanced``
+    # record, so the saved search's underlying record type must be known (e.g. Transaction, Customer,
+    # Item). It drives which SearchAdvanced type the SOAP client instantiates.
+    search_record_type: str = "Transaction"
     page_size: int = 1000
     extra_filters: list[dict[str, Any]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_required(self, info: ValidationInfo) -> SavedSearchRow:
-        if _is_runtime(info) and not self.saved_search_id:
-            raise UserException("saved_search mode requires a 'saved_search_id'.")
+        if _is_runtime(info):
+            if not self.saved_search_id:
+                raise UserException("saved_search mode requires a 'saved_search_id'.")
+            if not self.search_record_type:
+                raise UserException(
+                    "saved_search mode requires 'search_record_type' (the saved search's underlying "
+                    "record type, e.g. Transaction, Customer, Item) — it selects the SuiteTalk "
+                    "SearchAdvanced request type."
+                )
         return self
 
 

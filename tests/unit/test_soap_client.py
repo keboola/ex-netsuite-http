@@ -6,6 +6,8 @@ TokenPassport SOAP header is built from the signer (the auth wiring, which VCR c
 because signatures are scrubbed)."""
 
 import lxml.etree as etree
+import pytest
+from keboola.component.exceptions import UserException
 
 from client.auth import TBASigner
 from client.soap import SoapClient
@@ -89,3 +91,36 @@ def test_service_rebinds_to_account_specific_endpoint():
     assert address == "https://1234567-sb1.suitetalk.api.netsuite.com/services/NetSuitePort_2023_2"
     assert "webservices.netsuite.com" not in address
     assert service == f"service@{address}"
+
+
+def test_saved_search_request_builds_and_validates_offline():
+    """Regression guard for the run_saved_search request SHAPE.
+
+    NetSuite runs a saved search via a typed ``<RecordType>SearchAdvanced`` record carrying
+    ``savedSearchId`` — the earlier ``SearchRequest(savedSearchId=...)`` shape was invalid (that type
+    has no such field). zeep validates request objects against the schema at serialization time, so
+    building + serializing the request against the bundled WSDL (offline, no network) catches exactly
+    that signature-mismatch class of bug.
+    """
+    client = _client()
+    advanced = client._advanced_search_type("Transaction")
+    record = advanced(savedSearchId="customsearch_example")
+    record.criteria = client._build_criteria("Transaction", "2024-01-01T00:00:00Z")
+    node = client._client.create_message(client._client.service, "search", searchRecord=record)
+    xml = etree.tostring(node, encoding="unicode")
+    assert "customsearch_example" in xml  # savedSearchId serialized
+    assert "SearchAdvanced" in xml  # the SearchAdvanced record type is used
+    assert "onOrAfter" in xml  # incremental lastModifiedDate criterion serialized
+
+
+def test_advanced_search_type_resolves_across_namespaces():
+    client = _client()
+    for record_type in ("Transaction", "Customer", "Item"):
+        advanced = client._advanced_search_type(record_type)
+        assert advanced.name == f"{record_type}SearchAdvanced"
+
+
+def test_unknown_search_record_type_raises():
+    client = _client()
+    with pytest.raises(UserException):
+        client._advanced_search_type("NotARealRecordType")

@@ -57,6 +57,7 @@ class SavedSearchExtractor(Extractor):
         since = self.since if self.row.incremental else None
         raw = self.soap_client.run_saved_search(
             self.row.saved_search_id,
+            search_record_type=self.row.search_record_type,
             page_size=self.row.page_size,
             since=since,
             extra_filters=self.row.extra_filters or None,

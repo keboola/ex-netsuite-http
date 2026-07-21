@@ -179,41 +179,76 @@ class SoapClient:
     def run_saved_search(
         self,
         saved_search_id: str,
+        search_record_type: str = "Transaction",
         page_size: int = 1000,
         since: str | None = None,
         extra_filters: list[dict[str, Any]] | None = None,
     ) -> Any:
-        """Execute a saved search by id and return the first page's raw SOAP result.
+        """Execute a saved search by id via the SuiteTalk ``search`` op and return the first page.
 
-        When ``since`` is supplied, an incremental ``lastModifiedDate onOrAfter`` criterion is layered
-        onto the search so the server filters (spec §4); ``extra_filters`` are additional criteria
-        layered the same way. Building the typed advanced-search record for an arbitrary saved search
-        is record-type specific, so the exact criteria typing is confirmed against the sandbox in the
-        VCR phase; here we attach the criteria the extractor computed. The paging loop and result
-        mapping live in the extractor.
+        NetSuite runs a saved search through a typed ``<RecordType>SearchAdvanced`` record carrying a
+        ``savedSearchId`` attribute — **not** a ``SearchRequest`` (which has no such field). The record
+        type comes from the row config (``search_record_type``: Transaction, Customer, Item, …) and
+        selects which SearchAdvanced type is instantiated. When ``since`` is set, an incremental
+        ``lastModifiedDate onOrAfter`` criterion is layered on via the typed ``<RecordType>SearchBasic``.
+        Arbitrary ``extra_filters`` need per-field SuiteTalk typing that varies by record type and
+        cannot be encoded generically, so they are not applied server-side here (embed them in the
+        saved search itself); a warning is logged. The paging loop and mapping live in the extractor.
         """
-        search_type = self._client.get_type(f"{{{_MESSAGES_NS.format(v=self.version)}}}SearchRequest")
-        search_record = search_type(savedSearchId=saved_search_id)
-        criteria = self._build_search_criteria(since, extra_filters)
-        if criteria:
-            # Layered filters (incremental watermark + extra_filters) — surfaced on the request so the
-            # server filters instead of the client. Exact typed criteria are VCR-verified.
+        advanced_type = self._advanced_search_type(search_record_type)
+        search_record = advanced_type(savedSearchId=saved_search_id)
+        criteria = self._build_criteria(search_record_type, since)
+        if criteria is not None:
             search_record.criteria = criteria
+        if extra_filters:
+            logging.warning(
+                "saved_search extra_filters are not applied server-side (SuiteTalk typed criteria are "
+                "record-type specific); embed the filter in the saved search itself. Ignoring %d filter(s).",
+                len(extra_filters),
+            )
         prefs = self._search_preferences(page_size)
         return self._invoke(
             "search",
             lambda: self._service.search(searchRecord=search_record, _soapheaders=self._soapheaders() + [prefs]),
         )
 
-    @staticmethod
-    def _build_search_criteria(since: str | None, extra_filters: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-        """Assemble the layered search criteria (incremental watermark + configured extra filters)."""
-        criteria: list[dict[str, Any]] = []
-        if since:
-            criteria.append({"field": "lastModifiedDate", "operator": "onOrAfter", "value": since})
-        if extra_filters:
-            criteria.extend(extra_filters)
-        return criteria
+    def _find_named_type(self, local_name: str) -> Any:
+        """Resolve a WSDL complex type by its local name across all schema namespaces (or None)."""
+        for xsd_type in self._client.wsdl.types.types:
+            if getattr(xsd_type, "name", None) == local_name:
+                return xsd_type
+        return None
+
+    def _advanced_search_type(self, search_record_type: str) -> Any:
+        """Return the zeep ``<RecordType>SearchAdvanced`` type, or raise for an unknown record type."""
+        name = f"{search_record_type}SearchAdvanced"
+        advanced = self._find_named_type(name)
+        if advanced is None:
+            raise UserException(
+                f"Unknown saved-search record type '{search_record_type}': no SuiteTalk '{name}' type. "
+                "Use the saved search's underlying record type (e.g. Transaction, Customer, Item)."
+            )
+        return advanced
+
+    def _build_criteria(self, search_record_type: str, since: str | None) -> Any:
+        """Build a typed ``<RecordType>Search`` with an incremental lastModifiedDate criterion.
+
+        Returns None when there is no watermark, or when the record type has no typed
+        ``lastModifiedDate`` search field (then rely on the saved search's own date criterion)."""
+        if not since:
+            return None
+        search_type = self._find_named_type(f"{search_record_type}Search")
+        basic_type = self._find_named_type(f"{search_record_type}SearchBasic")
+        if search_type is None or basic_type is None or "lastModifiedDate" not in basic_type.signature():
+            logging.warning(
+                "Incremental lastModifiedDate filter not applied: no typed search field for record "
+                "type '%s'; relying on the saved search's own date criterion.",
+                search_record_type,
+            )
+            return None
+        date_field = self._client.get_type(f"{{{_CORE_NS.format(v=self.version)}}}SearchDateField")
+        basic = basic_type(lastModifiedDate=date_field(operator="onOrAfter", searchValue=since))
+        return search_type(basic=basic)
 
     def get_saved_search(self, search_type: str) -> Any:
         """List saved searches of a given record type (powers the listSavedSearches sync action)."""

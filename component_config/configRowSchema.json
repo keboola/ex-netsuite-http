@@ -155,6 +155,19 @@
       },
       "propertyOrder": 30
     },
+    "search_record_type": {
+      "type": "string",
+      "title": "Search Record Type",
+      "description": "The saved search's underlying record type. Selects the SuiteTalk SearchAdvanced request type used to run it.",
+      "enum": ["Transaction", "Customer", "Item", "Contact", "Employee", "Vendor", "SupportCase", "Task", "Opportunity"],
+      "default": "Transaction",
+      "options": {
+        "dependencies": {
+          "mode": "saved_search"
+        }
+      },
+      "propertyOrder": 30.5
+    },
     "page_size": {
       "type": "integer",
       "title": "Page Size",
