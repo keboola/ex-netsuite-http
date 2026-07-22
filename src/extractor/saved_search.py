@@ -59,8 +59,10 @@ class SavedSearchExtractor(Extractor):
     # ---- fetch + paging --------------------------------------------------
 
     def _fetch_rows(self) -> list[dict[str, Any]]:
-        # Layer the incremental watermark (server-side lastModifiedDate filter) and any configured
-        # extra filters onto the saved search so the server filters, not the client.
+        # The incremental watermark IS layered server-side (a typed lastModifiedDate onOrAfter
+        # criterion). ``extra_filters``, however, are NOT applied server-side: encoding arbitrary
+        # criteria needs per-field SuiteTalk typing that varies by record type, so run_saved_search
+        # logs and skips them. Users must embed such filters in the saved search definition itself.
         since = self.since if self.row.incremental else None
         raw = self.soap_client.run_saved_search(
             self.row.saved_search_id,
