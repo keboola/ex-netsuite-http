@@ -9,6 +9,7 @@ where each page is an independent signed request). Transient failures are retrie
 from collections.abc import Iterator
 from typing import Any
 
+import requests
 from keboola.component.exceptions import UserException
 
 from client.http_base import SignedHttpClient
@@ -16,6 +17,19 @@ from client.http_base import SignedHttpClient
 _RECORD_PATH = "/services/rest/record/v1"
 _SUITEQL_PATH = "/services/rest/query/v1/suiteql"
 _METADATA_PATH = "/services/rest/record/v1/metadata-catalog"
+
+
+def _json(response: requests.Response, surface: str) -> dict[str, Any]:
+    """Parse a JSON body, translating a non-JSON payload into a clean UserException.
+
+    NetSuite occasionally returns HTML (a gateway/maintenance page) or an empty body with a 2xx
+    status; an unguarded ``response.json()`` would then raise and crash the job as an exit-2 system
+    error instead of a user-facing message.
+    """
+    try:
+        return response.json()
+    except (ValueError, requests.exceptions.JSONDecodeError) as exc:
+        raise UserException(f"NetSuite returned a non-JSON response for {surface}.") from exc
 
 
 class RestClient(SignedHttpClient):
@@ -40,7 +54,7 @@ class RestClient(SignedHttpClient):
             params["fields"] = ",".join(fields)
         while url:
             response = self._signed_request("GET", url, params=params)
-            payload = response.json()
+            payload = _json(response, f"record collection '{record_type}'")
             yield from payload.get("items", [])
             url = self._next_link(payload)
             params = None  # the next link already carries limit/offset/q
@@ -49,7 +63,8 @@ class RestClient(SignedHttpClient):
         """GET a single record by internal id, optionally expanding sub-resources (sublists)."""
         url = f"{self.signer_base}{_RECORD_PATH}/{record_type}/{record_id}"
         params = {"expandSubResources": "true"} if expand_sub_resources else None
-        return self._signed_request("GET", url, params=params).json()
+        response = self._signed_request("GET", url, params=params)
+        return _json(response, f"record '{record_type}/{record_id}'")
 
     @staticmethod
     def _next_link(payload: dict[str, Any]) -> str | None:
@@ -63,13 +78,14 @@ class RestClient(SignedHttpClient):
     def suiteql_page(self, query: str, limit: int = 1000, offset: int = 0) -> dict[str, Any]:
         """Run a single SuiteQL page and return the raw payload (used for windowing/validation)."""
         url = f"{self.signer_base}{_SUITEQL_PATH}"
-        return self._signed_request(
+        response = self._signed_request(
             "POST",
             url,
             params={"limit": min(limit, 1000), "offset": offset},
             json_body={"q": query},
             extra_headers={"Prefer": "transient"},
-        ).json()
+        )
+        return _json(response, "SuiteQL query")
 
     def iter_suiteql(self, query: str, limit: int = 1000) -> Iterator[dict[str, Any]]:
         """Yield SuiteQL result rows, paging on ``hasMore`` with a fresh signature per page."""
@@ -104,7 +120,8 @@ class RestClient(SignedHttpClient):
         url = f"{self.signer_base}{_METADATA_PATH}"
         if record_type:
             url = f"{url}/{record_type}"
-        return self._signed_request("GET", url, extra_headers={"Accept": "application/schema+json"}).json()
+        response = self._signed_request("GET", url, extra_headers={"Accept": "application/schema+json"})
+        return _json(response, "metadata catalog")
 
     # ---- helpers ---------------------------------------------------------
 

@@ -130,6 +130,43 @@ def test_metadata_catalog_returns_json():
 
 
 @responses.activate
+def test_non_json_response_raises_user_exception_on_record_collection():
+    responses.add(responses.GET, RECORD_URL, body="<html>gateway timeout</html>", status=200)
+    client = _client()
+    with pytest.raises(UserException, match="non-JSON response"):
+        list(client.iter_record_collection("customer"))
+
+
+@responses.activate
+def test_non_json_response_raises_user_exception_on_get_record():
+    responses.add(responses.GET, f"{RECORD_URL}/1", body="not json", status=200)
+    client = _client()
+    with pytest.raises(UserException, match="non-JSON response"):
+        client.get_record("customer", "1")
+
+
+@responses.activate
+def test_non_json_response_raises_user_exception_on_suiteql():
+    responses.add(responses.POST, SUITEQL_URL, body="<html>maintenance</html>", status=200)
+    client = _client()
+    with pytest.raises(UserException, match="non-JSON response"):
+        list(client.iter_suiteql("SELECT 1"))
+
+
+@responses.activate
+def test_non_json_response_raises_user_exception_on_metadata_catalog():
+    responses.add(
+        responses.GET,
+        f"{BASE}/services/rest/record/v1/metadata-catalog",
+        body="oops",
+        status=200,
+    )
+    client = _client()
+    with pytest.raises(UserException, match="non-JSON response"):
+        client.get_metadata_catalog()
+
+
+@responses.activate
 def test_suiteql_prefer_transient_header_sent():
     responses.add(responses.POST, SUITEQL_URL, json={"items": [], "hasMore": False}, status=200)
     client = _client()
