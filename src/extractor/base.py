@@ -41,7 +41,7 @@ class Extractor(ABC):
 
     @abstractmethod
     def extract(self) -> ExtractionResult:
-        """Fetch data and return the tables + new state (state written only after success)."""
+        """Fetch data and return the output tables for this row."""
 
 
 def infer_base_type(value: Any) -> str:
