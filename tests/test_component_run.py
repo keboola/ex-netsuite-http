@@ -130,6 +130,33 @@ def test_missing_secret_raises_user_exception(tmp_path):
         _run(data_dir)
 
 
+def test_zero_row_run_writes_header_only_table_and_manifest(tmp_path):
+    # T12: a 0-row run must still create the Storage table (header-only CSV + manifest) using the
+    # configured primary key as the known schema, rather than silently skipping the table.
+    params = {
+        **CONNECTION,
+        "mode": "suiteql",
+        "query": "SELECT id, name FROM customer",
+        "output_table_name": "customers",
+        "primary_key": ["id"],
+        "load_type": "full_load",
+    }
+    data_dir = _make_datadir(tmp_path, params)
+    with (
+        mock.patch.object(RestClient, "iter_suiteql", return_value=iter([])),
+        mock.patch.object(RestClient, "server_time", return_value="2024-05-01T00:00:00Z"),
+    ):
+        _run(data_dir)
+    csv_path = data_dir / "out" / "tables" / "customers.csv"
+    manifest_path = data_dir / "out" / "tables" / "customers.csv.manifest"
+    assert csv_path.exists()
+    assert manifest_path.exists()
+    # header-only: exactly one line (the header from the configured primary key), no data rows
+    lines = csv_path.read_text(encoding="utf-8").splitlines()
+    assert lines == ["id"]
+    assert _read_csv(data_dir, "customers") == []
+
+
 def test_manifest_written_with_schema(tmp_path):
     params = {
         **CONNECTION,

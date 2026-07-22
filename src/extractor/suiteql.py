@@ -15,9 +15,8 @@ from typing import Any
 
 from client.rest import RestClient
 from configuration import SuiteQLRow
-from extractor.base import ExtractionResult, Extractor, OutputTable, infer_base_type
+from extractor.base import STATE_LAST_RUN, ExtractionResult, Extractor, OutputTable, infer_base_type
 
-_STATE_LAST_RUN = "last_run"
 _STATE_PLACEHOLDER = ":state"
 _WINDOW_START = ":window_start"
 _WINDOW_END = ":window_end"
@@ -58,7 +57,7 @@ class SuiteQLExtractor(Extractor):
             columns=self._columns(rows),
             column_types=self._infer_types(rows),
         )
-        state = {_STATE_LAST_RUN: new_watermark} if new_watermark else {}
+        state = {STATE_LAST_RUN: new_watermark} if new_watermark else {}
         return ExtractionResult(tables=[table], state=state)
 
     # ---- fetch -----------------------------------------------------------

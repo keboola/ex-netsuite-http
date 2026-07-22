@@ -23,7 +23,7 @@ from client.rest import RestClient
 from client.restlet import RestletClient
 from client.soap import SoapClient
 from configuration import Configuration, RecordRow, RestletRow, SavedSearchRow, SuiteQLRow
-from extractor.base import ExtractionResult, Extractor, OutputTable
+from extractor.base import STATE_LAST_RUN, ExtractionResult, Extractor, OutputTable
 from extractor.record import RecordExtractor
 from extractor.restlet import RestletExtractor
 from extractor.saved_search import SavedSearchExtractor
@@ -110,8 +110,6 @@ VCR_SANITIZERS = [
     CallbackSanitizer(before_request=_scrub_request, before_response=_scrub_response),
 ]
 
-_STATE_LAST_RUN = "last_run"
-
 _BASE_TYPES = {
     "integer": BaseType.integer,
     "numeric": BaseType.numeric,
@@ -167,7 +165,7 @@ class Component(SyncActionsMixin, ComponentBase):
         if not incremental:
             return None
         state = self.get_state_file() or {}
-        return state.get(_STATE_LAST_RUN)
+        return state.get(STATE_LAST_RUN)
 
     # ---- output / state --------------------------------------------------
 
@@ -176,10 +174,28 @@ class Component(SyncActionsMixin, ComponentBase):
             self._write_table(table)
 
     def _write_table(self, table: OutputTable) -> None:
-        rows = list(table.rows)
-        columns = table.columns or self._collect_columns(rows)
+        # Stream rows straight to the CSV writer instead of materializing them (spec: avoid buffering
+        # a whole large pull in memory). The CSV header needs the column set up front, so extractors
+        # declare ``columns``; when they don't (a schema-less table), we fall back to buffering once
+        # to collect the column union — the only path that holds all rows in memory.
+        rows_iter = iter(table.rows)
+        columns = table.columns
+        if columns is None:
+            buffered = list(rows_iter)
+            columns = self._collect_columns(buffered)
+            rows_iter = iter(buffered)
+
+        # T12: a 0-row run must still create the Storage table. When the row data yielded no columns
+        # (columns are data-derived), fall back to the configured primary key as the known header so a
+        # header-only CSV + manifest are still written; if even that is empty there is no known schema.
         if not columns:
-            logging.warning("Table '%s' produced no columns; skipping.", table.name)
+            columns = list(table.primary_key)
+        if not columns:
+            logging.warning(
+                "Table '%s' produced 0 rows and no known schema (columns are derived from the data); "
+                "no Storage table written this run.",
+                table.name,
+            )
             return
 
         table_def = self.create_out_table_definition(
@@ -189,13 +205,18 @@ class Component(SyncActionsMixin, ComponentBase):
             schema=self._build_schema(columns, table.column_types, table.primary_key),
             has_header=True,
         )
+        written = 0
         with open(table_def.full_path, "w", encoding="utf-8", newline="") as out_file:
             writer = csv.DictWriter(out_file, fieldnames=columns, extrasaction="ignore")
             writer.writeheader()
-            for row in rows:
+            for row in rows_iter:
                 writer.writerow({col: self._serialize_value(row.get(col)) for col in columns})
+                written += 1
         self.write_manifest(table_def)
-        logging.info("Wrote %s rows to table '%s'.", len(rows), table.name)
+        if written == 0:
+            logging.info("Table '%s': first run produced 0 rows; wrote a header-only table.", table.name)
+        else:
+            logging.info("Wrote %s rows to table '%s'.", written, table.name)
 
     @staticmethod
     def _build_schema(

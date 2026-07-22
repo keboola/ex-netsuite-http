@@ -15,9 +15,14 @@ from typing import Any
 
 from client.soap import SoapClient
 from configuration import SavedSearchRow
-from extractor.base import ExtractionResult, Extractor, OutputTable
-
-_STATE_LAST_RUN = "last_run"
+from extractor.base import (
+    STATE_LAST_RUN,
+    ExtractionResult,
+    Extractor,
+    OutputTable,
+    collect_columns,
+    infer_column_types,
+)
 
 
 class SavedSearchExtractor(Extractor):
@@ -45,8 +50,10 @@ class SavedSearchExtractor(Extractor):
             rows=rows,
             primary_key=self.row.primary_key,
             incremental=self.row.incremental,
+            columns=collect_columns(rows) or None,
+            column_types=infer_column_types(rows) or None,
         )
-        state = {_STATE_LAST_RUN: new_watermark} if new_watermark else {}
+        state = {STATE_LAST_RUN: new_watermark} if new_watermark else {}
         return ExtractionResult(tables=[table], state=state)
 
     # ---- fetch + paging --------------------------------------------------

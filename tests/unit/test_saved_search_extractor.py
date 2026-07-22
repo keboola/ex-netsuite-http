@@ -56,6 +56,16 @@ def test_search_more_with_id_paging():
     assert client.search_more_with_id.call_count == 2
 
 
+def test_native_column_types_inferred_from_rows():
+    # T2: saved_search output must carry native column types inferred from the mapped records.
+    client = mock.Mock()
+    client.run_saved_search.return_value = _result([{"id": "1", "amount": 9.0, "count": 2, "flag": False}])
+    ext = SavedSearchExtractor(row=_row(load_type="full_load"), soap_client=client)
+    table = ext.extract().tables[0]
+    assert table.columns == ["id", "amount", "count", "flag"]
+    assert table.column_types == {"id": "string", "amount": "numeric", "count": "integer", "flag": "boolean"}
+
+
 def test_state_captured_from_server_time():
     client = mock.Mock()
     client.run_saved_search.return_value = _result([{"id": "1"}])

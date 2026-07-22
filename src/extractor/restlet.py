@@ -11,9 +11,14 @@ from collections.abc import Callable
 
 from client.restlet import RestletClient
 from configuration import RestletRow
-from extractor.base import ExtractionResult, Extractor, OutputTable
-
-_STATE_LAST_RUN = "last_run"
+from extractor.base import (
+    STATE_LAST_RUN,
+    ExtractionResult,
+    Extractor,
+    OutputTable,
+    collect_columns,
+    infer_column_types,
+)
 
 
 class RestletExtractor(Extractor):
@@ -38,14 +43,19 @@ class RestletExtractor(Extractor):
             query_params[self.row.incremental_field] = self.since
 
         logging.info("Calling RESTlet script=%s deploy=%s", self.row.script_id, self.row.deploy_id)
-        rows = self.restlet_client.iter_records(
-            self.row.script_id,
-            self.row.deploy_id,
-            method=self.row.method.value,
-            query_params=query_params,
-            body=self.row.request_body,
-            record_path=self.row.record_path,
-            cursor_field=self.row.pagination_cursor_field,
+        # Materialize the paged RESTlet rows so the output manifest carries native column types
+        # (inferred from the fetched rows, as the SuiteQL extractor does). RESTlet result sets are
+        # bounded by what the customer's script returns per configured pagination.
+        rows = list(
+            self.restlet_client.iter_records(
+                self.row.script_id,
+                self.row.deploy_id,
+                method=self.row.method.value,
+                query_params=query_params,
+                body=self.row.request_body,
+                record_path=self.row.record_path,
+                cursor_field=self.row.pagination_cursor_field,
+            )
         )
 
         table = OutputTable(
@@ -53,8 +63,10 @@ class RestletExtractor(Extractor):
             rows=rows,
             primary_key=self.row.primary_key,
             incremental=self.row.incremental,
+            columns=collect_columns(rows) or None,
+            column_types=infer_column_types(rows) or None,
         )
-        state = {_STATE_LAST_RUN: new_watermark} if new_watermark else {}
+        state = {STATE_LAST_RUN: new_watermark} if new_watermark else {}
         return ExtractionResult(tables=[table], state=state)
 
     def _capture_watermark(self) -> str | None:

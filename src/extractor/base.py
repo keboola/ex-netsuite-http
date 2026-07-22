@@ -12,6 +12,10 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+# Single source of truth for the incremental watermark key in the state file (imported by
+# component.py and every extractor so the key can never drift between writer and readers).
+STATE_LAST_RUN = "last_run"
+
 
 @dataclass
 class OutputTable:
@@ -51,3 +55,26 @@ def infer_base_type(value: Any) -> str:
     if isinstance(value, float):
         return "numeric"
     return "string"
+
+
+def collect_columns(rows: Iterable[dict[str, Any]]) -> list[str]:
+    """Return the ordered union of column names across ``rows`` (first-seen order preserved)."""
+    columns: list[str] = []
+    for row in rows:
+        for key in row:
+            if key not in columns:
+                columns.append(key)
+    return columns
+
+
+def infer_column_types(rows: Iterable[dict[str, Any]]) -> dict[str, str]:
+    """Infer a base type per column from the first non-null value seen for that column.
+
+    Dict/list values (sublists serialized to JSON at write time) stay ``string``.
+    """
+    types: dict[str, str] = {}
+    for row in rows:
+        for key, value in row.items():
+            if key not in types and value is not None and not isinstance(value, (dict, list)):
+                types[key] = infer_base_type(value)
+    return types

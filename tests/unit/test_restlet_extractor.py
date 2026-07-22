@@ -58,6 +58,16 @@ def test_full_load_also_persists_watermark():
     assert result.state == {"last_run": "2024-05-01T00:00:00Z"}
 
 
+def test_native_column_types_inferred_from_rows():
+    # T2: restlet output must carry native column types inferred from the fetched rows, not STRING
+    # for everything.
+    row = _row(load_type="full_load")
+    ext, _ = _extractor(row, [{"id": "1", "amount": 12.5, "qty": 3, "active": True}])
+    table = ext.extract().tables[0]
+    assert table.columns == ["id", "amount", "qty", "active"]
+    assert table.column_types == {"id": "string", "amount": "numeric", "qty": "integer", "active": "boolean"}
+
+
 def test_incremental_since_passed_as_query_param():
     row = _row(load_type="incremental_load", incremental_field="modified_since")
     ext, client = _extractor(row, [{"id": "1"}], since="2024-01-01T00:00:00Z")

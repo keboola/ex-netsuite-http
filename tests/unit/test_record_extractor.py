@@ -125,6 +125,44 @@ def test_child_table_incremental_rejected_without_derivable_key():
         ext.extract()
 
 
+def test_child_key_requires_candidate_on_every_row():
+    # T4: a candidate key present on only SOME child rows must not be chosen as the composite PK —
+    # rows missing it would collide/drop on upsert. Require it present AND non-null on EVERY row.
+    row = _row(
+        sublist_handling="child_table", output_table_name="invoice", load_type="incremental_load", primary_key=["id"]
+    )
+    # 'line' present on both rows; 'id' present on only one -> must pick 'line', not 'id'.
+    records = [{"id": "10", "item": {"items": [{"line": 1, "id": "a"}, {"line": 2}]}}]
+    ext, _ = _extractor(row, records)
+    result = ext.extract()
+    child = {t.name: t for t in result.tables}["invoice_item"]
+    assert child.primary_key == ["_parent_id", "line"]
+
+
+def test_child_key_rejects_candidate_null_on_some_rows():
+    # T4: a candidate present on every row but NULL on some is not a sound key -> fall through.
+    row = _row(
+        sublist_handling="child_table", output_table_name="invoice", load_type="incremental_load", primary_key=["id"]
+    )
+    # 'line' is null on the second row; 'sequence' is complete -> must pick 'sequence'.
+    records = [{"id": "10", "item": {"items": [{"line": 1, "sequence": 5}, {"line": None, "sequence": 6}]}}]
+    ext, _ = _extractor(row, records)
+    result = ext.extract()
+    child = {t.name: t for t in result.tables}["invoice_item"]
+    assert child.primary_key == ["_parent_id", "sequence"]
+
+
+def test_child_key_incremental_rejected_when_no_candidate_on_every_row():
+    # T4: when no candidate is present-and-non-null on EVERY row, incremental must be rejected.
+    row = _row(
+        sublist_handling="child_table", output_table_name="invoice", load_type="incremental_load", primary_key=["id"]
+    )
+    records = [{"id": "10", "item": {"items": [{"line": 1}, {"key": "x"}]}}]
+    ext, _ = _extractor(row, records)
+    with pytest.raises(UserException, match="per-line key"):
+        ext.extract()
+
+
 def test_child_table_full_load_without_key_has_empty_pk():
     row = _row(sublist_handling="child_table", output_table_name="invoice", load_type="full_load")
     records = [{"id": "10", "item": {"items": [{"amount": 5.0}]}}]
@@ -133,6 +171,18 @@ def test_child_table_full_load_without_key_has_empty_pk():
     child = {t.name: t for t in result.tables}["invoice_item"]
     assert child.primary_key == []
     assert child.incremental is False
+
+
+def test_native_column_types_inferred_for_record_output():
+    # T2: record output (flatten) must carry native column types inferred from the fetched records.
+    row = _row(load_type="full_load", sublist_handling="flatten")
+    records = [{"id": "1", "balance": 100.5, "isInactive": False, "daysOverdue": 4}]
+    ext, _ = _extractor(row, records)
+    table = ext.extract().tables[0]
+    assert table.column_types["balance"] == "numeric"
+    assert table.column_types["isInactive"] == "boolean"
+    assert table.column_types["daysOverdue"] == "integer"
+    assert table.column_types["id"] == "string"
 
 
 def test_state_captured_from_server_time_before_fetch():

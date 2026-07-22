@@ -20,9 +20,14 @@ from keboola.component.exceptions import UserException
 
 from client.rest import RestClient
 from configuration import RecordRow, SublistHandling
-from extractor.base import ExtractionResult, Extractor, OutputTable
-
-_STATE_LAST_RUN = "last_run"
+from extractor.base import (
+    STATE_LAST_RUN,
+    ExtractionResult,
+    Extractor,
+    OutputTable,
+    collect_columns,
+    infer_column_types,
+)
 
 # Candidate per-line identifier columns used to form a child-table composite PK, in priority order.
 _CHILD_KEY_CANDIDATES = ("line", "lineuniquekey", "id", "key", "sequence", "seq")
@@ -70,7 +75,7 @@ class RecordExtractor(Extractor):
         else:
             tables = [self._flatten_table(records, table_name)]
 
-        state = {_STATE_LAST_RUN: new_watermark} if new_watermark else {}
+        state = {STATE_LAST_RUN: new_watermark} if new_watermark else {}
         return ExtractionResult(tables=tables, state=state)
 
     # ---- fetch -----------------------------------------------------------
@@ -129,11 +134,14 @@ class RecordExtractor(Extractor):
     # ---- sublist handling ------------------------------------------------
 
     def _flatten_table(self, records: Any, table_name: str) -> OutputTable:
+        rows = list(self._flatten_rows(records))
         return OutputTable(
             name=table_name,
-            rows=self._flatten_rows(records),
+            rows=rows,
             primary_key=self.row.primary_key,
             incremental=self.row.incremental,
+            columns=collect_columns(rows) or None,
+            column_types=infer_column_types(rows) or None,
         )
 
     def _flatten_rows(self, records: Any):
@@ -167,6 +175,8 @@ class RecordExtractor(Extractor):
                 rows=parent_rows,
                 primary_key=self.row.primary_key,
                 incremental=self.row.incremental,
+                columns=collect_columns(parent_rows) or None,
+                column_types=infer_column_types(parent_rows) or None,
             )
         ]
         for sublist_name, rows in child_rows.items():
@@ -179,6 +189,8 @@ class RecordExtractor(Extractor):
                     rows=rows,
                     primary_key=self._child_primary_key(sublist_name, rows),
                     incremental=self.row.incremental,
+                    columns=collect_columns(rows) or None,
+                    column_types=infer_column_types(rows) or None,
                 )
             )
         return tables
@@ -199,12 +211,16 @@ class RecordExtractor(Extractor):
 
     @staticmethod
     def _derive_child_key(rows: list[dict[str, Any]]) -> str | None:
-        keys: set[str] = set()
-        for row in rows:
-            keys.update(row.keys())
-        keys.discard("_parent_id")
+        # Intersection semantics: a candidate is a sound per-line key only if it is present AND
+        # non-null on EVERY child row. A candidate present on only some rows (or null on some) would
+        # let those rows collide on the composite PK and be silently dropped on the incremental
+        # upsert. Try candidates in priority order; fall through to the next when one fails.
+        if not rows:
+            return None
         for candidate in _CHILD_KEY_CANDIDATES:
-            if candidate in keys:
+            if candidate == "_parent_id":
+                continue
+            if all(row.get(candidate) is not None for row in rows):
                 return candidate
         return None
 
