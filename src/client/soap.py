@@ -26,7 +26,7 @@ _DEFAULT_VERSION = "2023_2"
 _CORE_NS = "urn:core_{v}.platform.webservices.netsuite.com"
 _MESSAGES_NS = "urn:messages_{v}.platform.webservices.netsuite.com"
 
-# The version-pinned WSDL + its imported XSD tree are bundled in the repo (see scratchpad/bundle_wsdl
+# The version-pinned WSDL + its imported XSD tree are bundled in the repo (see scripts/bundle_wsdl
 # .py). The WSDL is account-agnostic — it carries no account id/host, only the generic service address
 # which we override per account at runtime — so loading it from disk is safe and, crucially, lets SOAP
 # cassettes REPLAY offline in CI without fetching the WSDL over the network.

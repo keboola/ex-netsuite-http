@@ -15,7 +15,7 @@ account-id host is rewritten to a fixed `account.*` placeholder in request URIs 
 links, the SOAP `TokenPassport` is redacted, and email PII is redacted. No account id, secret, or
 PII is committed.
 
-Re-record with `scratchpad/record_cassettes.py` (reads creds from `secrets.env`, never committed).
+Re-record with `scripts/record_cassettes.py` (reads creds from `secrets.env`, never committed).
 
 ## Mock-based (SYNTHETIC) tests — `tests/functional_mock/`
 
@@ -56,5 +56,5 @@ error surfacing, and state — everything except the live wire format.
 1. In the sandbox: create a `customsearch_*` saved search, and deploy a RESTlet (note its script +
    deployment internal ids and response shape).
 2. Add `saved_search` / `restlet` entries to `tests/setup/configs.json`.
-3. Run `uv run python scratchpad/record_cassettes.py` (it also regenerates `expected/` from a
+3. Run `uv run python scripts/record_cassettes.py` (it also regenerates `expected/` from a
    sanitized replay). Verify the sanitization + intent gate, then commit.

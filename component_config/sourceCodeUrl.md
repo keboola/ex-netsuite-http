@@ -1,1 +1,1 @@
-https://github.com/keboola/ex-netsuite-http/blob/main/
+https://github.com/keboola/ex-netsuite-http
