@@ -5,6 +5,8 @@ envelope is the only sane way to exercise zeep. Here we only assert the module i
 TokenPassport SOAP header is built from the signer (the auth wiring, which VCR cannot easily verify
 because signatures are scrubbed)."""
 
+from unittest import mock
+
 import lxml.etree as etree
 import pytest
 from keboola.component.exceptions import UserException
@@ -124,3 +126,36 @@ def test_unknown_search_record_type_raises():
     client = _client()
     with pytest.raises(UserException):
         client._advanced_search_type("NotARealRecordType")
+
+
+# ---- T6: SOAP fault / transport error translation ------------------------
+
+
+def test_soap_fault_translated_to_user_exception():
+    """A zeep Fault (server-side rejection: bad creds / invalid search / missing permission) must
+    surface as a clean UserException (exit 1), not an unhandled exit-2 crash."""
+    from zeep.exceptions import Fault
+
+    client = _client()
+    fake_service = mock.Mock()
+    fake_service.search.side_effect = Fault("INVALID_LOGIN: bad token")
+    client.__dict__["_service"] = fake_service  # short-circuit the cached WSDL-backed service
+
+    with pytest.raises(UserException) as exc:
+        client.search(search_record=object(), page_size=10)
+    assert "SOAP search was rejected" in str(exc.value)
+
+
+def test_soap_transport_error_translated_to_user_exception():
+    """A zeep TransportError (timeout / connection reset) is transient infra failure and must surface
+    as a UserException with a retry hint, not an unhandled crash."""
+    from zeep.exceptions import TransportError
+
+    client = _client()
+    fake_service = mock.Mock()
+    fake_service.searchMoreWithId.side_effect = TransportError("read timed out", status_code=504)
+    client.__dict__["_service"] = fake_service
+
+    with pytest.raises(UserException) as exc:
+        client.search_more_with_id("s1", 2)
+    assert "failed to reach the server" in str(exc.value)
