@@ -2,6 +2,9 @@
 
 from unittest import mock
 
+import pytest
+from keboola.component.exceptions import UserException
+
 from configuration import SuiteQLRow
 from extractor.suiteql import SuiteQLExtractor
 
@@ -62,6 +65,43 @@ def test_windowing_splits_large_range():
     assert "2024-03-02T00:00:00Z" in queries[-1]
     # rows from every window are concatenated into one table
     assert [r["id"] for r in result.tables[0].rows] == ["1", "2", "3"]
+
+
+def test_windowing_splits_on_full_load():
+    # Windowing must protect large FULL pulls too: with no `since`, the window start defaults to the
+    # epoch and the end is the pre-fetch server-time watermark, so the range is still split.
+    row = _row(
+        query="SELECT id FROM tx WHERE trandate BETWEEN :window_start AND :window_end",
+        window_size=30,
+        load_type="full_load",
+    )
+    ext, client = _extractor(
+        row,
+        [[{"id": "1"}], [{"id": "2"}], [{"id": "3"}]],
+        since=None,
+        server_now="1970-04-01T00:00:00Z",
+    )
+    result = ext.extract()
+    # epoch (1970-01-01) -> 1970-04-01 in 30-day windows == 3 windows, not a single unsplit query
+    assert client.iter_suiteql.call_count == 3
+    queries = [c[0][0] for c in client.iter_suiteql.call_args_list]
+    assert "1970-01-01T00:00:00Z" in queries[0]
+    assert ":window_start" not in queries[0]
+    assert [r["id"] for r in result.tables[0].rows] == ["1", "2", "3"]
+
+
+def test_windowing_without_watermark_raises():
+    # Windowing needs a concrete end watermark; if server time can't be determined, fail fast.
+    row = _row(
+        query="SELECT id FROM tx WHERE trandate BETWEEN :window_start AND :window_end",
+        window_size=30,
+        load_type="full_load",
+    )
+    client = mock.Mock()
+    client.iter_suiteql.side_effect = [iter([{"id": "1"}])]
+    ext = SuiteQLExtractor(row=row, rest_client=client, since=None, server_time_provider=None)
+    with pytest.raises(UserException):
+        ext.extract()
 
 
 def test_watermark_captured_before_fetch():

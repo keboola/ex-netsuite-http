@@ -3,7 +3,9 @@
 Runs the user's query with ``hasMore`` pagination. Incremental runs bind the stored watermark into
 a ``:state`` placeholder (``WHERE lastmodifieddate > :state``). To stay under NetSuite's ~100k-row
 result ceiling, a query written with ``:window_start`` / ``:window_end`` placeholders is executed
-once per date window (``window_size`` days) across the incremental range, concatenating the results.
+once per date window (``window_size`` days), concatenating the results. Windowing runs for full and
+incremental loads alike: the window start is the stored watermark (or the epoch when none exists)
+and the end is the pre-fetch server-time watermark.
 Typed columns are inferred for the native-types manifest. The watermark is NetSuite server time
 captured before the fetch begins (spec §2).
 """
@@ -13,6 +15,8 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
+from keboola.component.exceptions import UserException
+
 from client.rest import RestClient
 from configuration import SuiteQLRow
 from extractor.base import STATE_LAST_RUN, ExtractionResult, Extractor, OutputTable, infer_base_type
@@ -20,6 +24,7 @@ from extractor.base import STATE_LAST_RUN, ExtractionResult, Extractor, OutputTa
 _STATE_PLACEHOLDER = ":state"
 _WINDOW_START = ":window_start"
 _WINDOW_END = ":window_end"
+_EPOCH = "1970-01-01T00:00:00Z"
 
 # NetSuite SuiteQL rejects a bare quoted ISO literal in a date/timestamp comparison (400); the
 # watermark (ISO-8601 UTC from ``server_time``) must be wrapped in TO_TIMESTAMP with a matching mask.
@@ -70,27 +75,39 @@ class SuiteQLExtractor(Extractor):
         return list(self.rest_client.iter_suiteql(query, limit=self.row.page_limit))
 
     def _fetch_windowed(self, watermark: str | None) -> list[dict[str, Any]]:
+        # The window end is the pre-fetch server-time watermark. Windowing exists to bound the row
+        # count per query, so a concrete end is mandatory — fail fast rather than run one huge query.
         end = watermark or (self.server_time_provider() if self.server_time_provider else None)
-        windows = self._windows(self.since, end)
+        if not end:
+            raise UserException(
+                "SuiteQL date windowing needs a server-time watermark for the window end, but none "
+                "could be determined. Windowing requires the NetSuite server clock; set window_size "
+                "to 0 to disable it, or ensure server time is available."
+            )
+        # With no incremental watermark (full load / first incremental run) the window start defaults
+        # to the epoch so the whole history is still split into bounded windows.
+        start = self.since or _EPOCH
+        windows = self._windows(start, end)
         rows: list[dict[str, Any]] = []
-        for start, stop in windows:
-            query = self.row.query.replace(_WINDOW_START, _ts(start)).replace(_WINDOW_END, _ts(stop))
-            logging.info("Running SuiteQL window %s -> %s", start, stop)
+        for w_start, w_stop in windows:
+            query = self.row.query.replace(_WINDOW_START, _ts(w_start)).replace(_WINDOW_END, _ts(w_stop))
+            logging.info("Running SuiteQL window %s -> %s", w_start, w_stop)
             rows.extend(self.rest_client.iter_suiteql(query, limit=self.row.page_limit))
         return rows
 
     def _is_windowed(self) -> bool:
-        return self.row.window_size > 0 and _WINDOW_START in self.row.query and self.since is not None
+        # Enable windowing whenever the placeholders are present and a window size is set, regardless
+        # of `since` — large FULL pulls need the ~100k-row-ceiling protection just as much as
+        # incremental ones (a missing `since` defaults the start to the epoch in _fetch_windowed).
+        return self.row.window_size > 0 and _WINDOW_START in self.row.query
 
     def _bind_state(self, query: str) -> str:
         if self.row.incremental and _STATE_PLACEHOLDER in query:
-            lower = self.since or "1970-01-01T00:00:00Z"
+            lower = self.since or _EPOCH
             return query.replace(_STATE_PLACEHOLDER, _ts(lower))
         return query
 
-    def _windows(self, since: str | None, end: str | None) -> list[tuple[str, str]]:
-        if not since or not end:
-            return [(since or "1970-01-01T00:00:00Z", end or "")]
+    def _windows(self, since: str, end: str) -> list[tuple[str, str]]:
         start_dt = _parse(since)
         end_dt = _parse(end)
         step = timedelta(days=self.row.window_size)
