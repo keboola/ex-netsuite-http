@@ -1,59 +1,43 @@
 """``suiteql`` mode extractor — arbitrary SuiteQL over REST.
 
-Runs the user's query with ``hasMore`` pagination. Incremental runs bind the stored watermark into
-a ``:state`` placeholder (``WHERE lastmodifieddate > :state``). To stay under NetSuite's ~100k-row
-result ceiling, a query written with ``:window_start`` / ``:window_end`` placeholders is executed
-once per date window (``window_size`` days), concatenating the results. Windowing runs for full and
-incremental loads alike: the window start is the stored watermark (or the epoch when none exists)
-and the end is the pre-fetch server-time watermark.
-Typed columns are inferred for the native-types manifest. The watermark is NetSuite server time
-captured before the fetch begins (spec §2).
+Runs the user's query with ``hasMore`` pagination. When the query contains the ``:date_from`` /
+``:date_to`` placeholders, the configured date range (parsed with Keboola's dateparser — relative
+strings like "5 days ago" or absolute dates) is substituted into the query before it runs. A single
+range is issued verbatim (no auto sub-chunking); a range that would exceed NetSuite's ~100k SuiteQL
+row ceiling should be narrowed. Typed columns are inferred for the native-types manifest.
 """
 
 import logging
-from collections.abc import Callable
-from datetime import datetime, timedelta
-from typing import Any
+from datetime import datetime
+from typing import Any, cast
 
 from keboola.component.exceptions import UserException
+from keboola.utils import parse_datetime_interval
 
 from client.rest import RestClient
 from configuration import SuiteQLRow
-from extractor.base import STATE_LAST_RUN, ExtractionResult, Extractor, OutputTable, infer_base_type
+from extractor.base import ExtractionResult, Extractor, OutputTable, infer_base_type
 
-_STATE_PLACEHOLDER = ":state"
-_WINDOW_START = ":window_start"
-_WINDOW_END = ":window_end"
-_EPOCH = "1970-01-01T00:00:00Z"
+_DATE_FROM = ":date_from"
+_DATE_TO = ":date_to"
 
 # NetSuite SuiteQL rejects a bare quoted ISO literal in a date/timestamp comparison (400); the
-# watermark (ISO-8601 UTC from ``server_time``) must be wrapped in TO_TIMESTAMP with a matching mask.
+# substituted date must be wrapped in TO_TIMESTAMP with a matching mask.
 _TS_MASK = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'
 
 
-def _ts(value: str) -> str:
-    """Render an ISO-8601 UTC watermark as a SuiteQL TO_TIMESTAMP literal NetSuite accepts."""
-    return f"TO_TIMESTAMP('{value}', '{_TS_MASK}')"
+def _ts(dt: datetime) -> str:
+    """Render a datetime as a SuiteQL TO_TIMESTAMP literal NetSuite accepts."""
+    return f"TO_TIMESTAMP('{dt.strftime('%Y-%m-%dT%H:%M:%SZ')}', '{_TS_MASK}')"
 
 
 class SuiteQLExtractor(Extractor):
-    def __init__(
-        self,
-        row: SuiteQLRow,
-        rest_client: RestClient,
-        since: str | None = None,
-        server_time_provider: Callable[[], str] | None = None,
-    ):
+    def __init__(self, row: SuiteQLRow, rest_client: RestClient):
         self.row = row
         self.rest_client = rest_client
-        self.since = since
-        self.server_time_provider = server_time_provider
 
     def extract(self) -> ExtractionResult:
-        # Capture the watermark from NetSuite's clock BEFORE fetching (spec §2).
-        new_watermark = self._capture_watermark()
-
-        rows = self._fetch_rows(new_watermark)
+        rows = self._fetch_rows()
         table = OutputTable(
             name=self.row.output_table_name or "suiteql_result",
             rows=rows,
@@ -62,71 +46,37 @@ class SuiteQLExtractor(Extractor):
             columns=self._columns(rows),
             column_types=self._infer_types(rows),
         )
-        state = {STATE_LAST_RUN: new_watermark} if new_watermark else {}
-        return ExtractionResult(tables=[table], state=state)
+        return ExtractionResult(tables=[table])
 
     # ---- fetch -----------------------------------------------------------
 
-    def _fetch_rows(self, watermark: str | None) -> list[dict[str, Any]]:
-        if self._is_windowed():
-            return self._fetch_windowed(watermark)
-        query = self._bind_state(self.row.query)
+    def _fetch_rows(self) -> list[dict[str, Any]]:
+        query = self._bind_dates(self.row.query)
         logging.info("Running SuiteQL query")
         return list(self.rest_client.iter_suiteql(query, limit=self.row.page_limit))
 
-    def _fetch_windowed(self, watermark: str | None) -> list[dict[str, Any]]:
-        # The window end is the pre-fetch server-time watermark. Windowing exists to bound the row
-        # count per query, so a concrete end is mandatory — fail fast rather than run one huge query.
-        end = watermark or (self.server_time_provider() if self.server_time_provider else None)
-        if not end:
+    def _bind_dates(self, query: str) -> str:
+        """Substitute the parsed date range into the ':date_from' / ':date_to' placeholders.
+
+        No-op when neither placeholder is present. When present, ``date_from`` is guaranteed set by
+        the run-start validator; ``date_to`` defaults to "now". Both are parsed with Keboola's
+        dateparser and rendered as TO_TIMESTAMP literals.
+        """
+        if _DATE_FROM not in query and _DATE_TO not in query:
+            return query
+        try:
+            # Called without strformat, so the helper returns datetimes (its return type is a union
+            # only because of the optional strformat overload).
+            start, end = cast(tuple[datetime, datetime], parse_datetime_interval(self.row.date_from, self.row.date_to))
+        except (ValueError, TypeError) as exc:
             raise UserException(
-                "SuiteQL date windowing needs a server-time watermark for the window end, but none "
-                "could be determined. Windowing requires the NetSuite server clock; set window_size "
-                "to 0 to disable it, or ensure server time is available."
-            )
-        # With no incremental watermark (full load / first incremental run) the window start defaults
-        # to the epoch so the whole history is still split into bounded windows.
-        start = self.since or _EPOCH
-        windows = self._windows(start, end)
-        rows: list[dict[str, Any]] = []
-        for w_start, w_stop in windows:
-            query = self.row.query.replace(_WINDOW_START, _ts(w_start)).replace(_WINDOW_END, _ts(w_stop))
-            logging.info("Running SuiteQL window %s -> %s", w_start, w_stop)
-            rows.extend(self.rest_client.iter_suiteql(query, limit=self.row.page_limit))
-        return rows
+                f"Could not parse the date range (Start Date '{self.row.date_from}', End Date "
+                f"'{self.row.date_to}'): {exc}. Use an absolute date (2024-01-01) or a relative "
+                "string dateparser understands (e.g. '5 days ago', 'now')."
+            ) from exc
+        return query.replace(_DATE_FROM, _ts(start)).replace(_DATE_TO, _ts(end))
 
-    def _is_windowed(self) -> bool:
-        # Enable windowing whenever the placeholders are present and a window size is set, regardless
-        # of `since` — large FULL pulls need the ~100k-row-ceiling protection just as much as
-        # incremental ones (a missing `since` defaults the start to the epoch in _fetch_windowed).
-        return self.row.window_size > 0 and _WINDOW_START in self.row.query
-
-    def _bind_state(self, query: str) -> str:
-        if self.row.incremental and _STATE_PLACEHOLDER in query:
-            lower = self.since or _EPOCH
-            return query.replace(_STATE_PLACEHOLDER, _ts(lower))
-        return query
-
-    def _windows(self, since: str, end: str) -> list[tuple[str, str]]:
-        start_dt = _parse(since)
-        end_dt = _parse(end)
-        step = timedelta(days=self.row.window_size)
-        windows: list[tuple[str, str]] = []
-        cursor = start_dt
-        while cursor < end_dt:
-            stop = min(cursor + step, end_dt)
-            windows.append((_iso(cursor), _iso(stop)))
-            cursor = stop
-        return windows or [(_iso(start_dt), _iso(end_dt))]
-
-    # ---- watermark / typing ---------------------------------------------
-
-    def _capture_watermark(self) -> str | None:
-        # Persist a watermark on every successful run (incl. full loads) so a later full->incremental
-        # switch resumes from this run instead of re-pulling all history (spec §2).
-        if self.server_time_provider is None:
-            return None
-        return self.server_time_provider()
+    # ---- typing ----------------------------------------------------------
 
     @staticmethod
     def _columns(rows: list[dict[str, Any]]) -> list[str] | None:
@@ -149,11 +99,3 @@ class SuiteQLExtractor(Extractor):
                 if key not in types and value is not None:
                     types[key] = infer_base_type(value)
         return types
-
-
-def _parse(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-
-def _iso(value: datetime) -> str:
-    return value.isoformat().replace("+00:00", "Z")

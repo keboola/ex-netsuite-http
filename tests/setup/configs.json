@@ -196,7 +196,7 @@
   },
   {
     "name": "13_record_customer_incremental",
-    "description": "record mode incremental, first run (empty state): q built with no lastModifiedDate clause; new watermark written to state. A seeded-state resume cannot be replayed here (the ON_OR_AFTER clause lives in the matched q query string, so it would not match the recorded request); resume request-building is covered by tests/unit/test_record_extractor.py.",
+    "description": "record mode incremental load (upsert on the primary key): the q filter drives which rows are fetched; the output table is upserted on 'id'.",
     "config": {
       "action": "run",
       "parameters": {
@@ -210,7 +210,6 @@
         "query_filter": "id BETWEEN [2206, 2251]",
         "sublist_handling": "flatten",
         "load_type": "incremental_load",
-        "incremental_field": "lastModifiedDate",
         "output_table_name": "customer_incremental",
         "primary_key": ["id"]
       }
@@ -276,7 +275,7 @@
   },
   {
     "name": "17_suiteql_incremental",
-    "description": "suiteql incremental, first run (empty state) binds :state to the epoch default and writes the new watermark. Genuine resume from a seeded prior watermark (the seeded timestamp bound into :state) is exercised end-to-end by tests/test_functional.py::test_suiteql_incremental_genuinely_resumes_from_seeded_state and by the unit tests.",
+    "description": "suiteql incremental load with a date range: the :date_from/:date_to placeholders are substituted from the parsed date range, and the output table is upserted on 'id'.",
     "config": {
       "action": "run",
       "parameters": {
@@ -286,7 +285,9 @@
         "#token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "suiteql",
-        "query": "SELECT id, companyname, lastmodifieddate FROM customer WHERE lastmodifieddate > :state AND id BETWEEN 2206 AND 2251",
+        "query": "SELECT id, companyname, lastmodifieddate FROM customer WHERE lastmodifieddate BETWEEN :date_from AND :date_to AND id BETWEEN 2206 AND 2251",
+        "date_from": "2000-01-01",
+        "date_to": "now",
         "load_type": "incremental_load",
         "output_table_name": "suiteql_incremental",
         "primary_key": ["id"]

@@ -5,38 +5,38 @@
     {
       "level": "INFO",
       "logger": "root",
-      "message": "Fetching record collection 'customer' (q=(id BETWEEN [2206, 2215]))",
-      "timestamp": "2026-07-21T12:54:31.058Z"
+      "message": "Fetching record collection 'customer' (q=id BETWEEN [2206, 2215])",
+      "timestamp": "2026-07-22T16:01:07.507Z"
     },
     {
       "level": "INFO",
       "logger": "root",
       "message": "Wrote 2 rows to table 'customer_ct'.",
-      "timestamp": "2026-07-21T12:54:32.275Z"
+      "timestamp": "2026-07-22T16:01:08.721Z"
     },
     {
       "level": "INFO",
       "logger": "root",
       "message": "Wrote 2 rows to table 'customer_ct_links'.",
-      "timestamp": "2026-07-21T12:54:32.277Z"
+      "timestamp": "2026-07-22T16:01:08.724Z"
     },
     {
       "level": "INFO",
       "logger": "root",
       "message": "Wrote 3 rows to table 'customer_ct_addressBook'.",
-      "timestamp": "2026-07-21T12:54:32.281Z"
+      "timestamp": "2026-07-22T16:01:08.726Z"
     },
     {
       "level": "INFO",
       "logger": "root",
       "message": "Wrote 2 rows to table 'customer_ct_currencyList'.",
-      "timestamp": "2026-07-21T12:54:32.285Z"
+      "timestamp": "2026-07-22T16:01:08.729Z"
     },
     {
       "level": "INFO",
       "logger": "root",
       "message": "Wrote 43 rows to table 'customer_ct_taxRegistration'.",
-      "timestamp": "2026-07-21T12:54:32.289Z"
+      "timestamp": "2026-07-22T16:01:08.733Z"
     }
   ]
 }

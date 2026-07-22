@@ -42,7 +42,7 @@ def _extractor(**kw) -> RestletExtractor:
     }
     row = RestletRow.model_validate(params)
     client = RestletClient(TBASigner("1234567_SB1", "ck", "cs", "ti", "ts"))
-    return RestletExtractor(row=row, restlet_client=client, server_time_provider=lambda: "2024-05-01T00:00:00Z")
+    return RestletExtractor(row=row, restlet_client=client)
 
 
 @responses.activate
@@ -60,13 +60,13 @@ def test_get_basic_maps_rows_from_record_path():
 def test_post_with_body_sends_body_and_maps_rows():
     responses.add(responses.POST, _RESTLET_URL, json=_fixture("restlet_post.json"), status=200)
     ext = _extractor(
-        method="POST", request_body={"filter": "active"}, record_path="data.results", load_type="full_load"
+        method="POST", request_body='{"filter": "active"}', record_path="data.results", load_type="full_load"
     )
     rows = list(ext.extract().tables[0].rows)
     assert [r["id"] for r in rows] == ["10"]
     sent = responses.calls[0].request
     assert sent.method == "POST"
-    assert b"filter" in (sent.body or b"")
+    assert "filter" in str(sent.body)
 
 
 @responses.activate

@@ -15,29 +15,13 @@ def _row(**kw):
     return SuiteQLRow(**base)
 
 
-def _extractor(row, pages, since=None, server_now="2024-05-01T00:00:00Z"):
+def _extractor(row, pages):
     client = mock.Mock()
-    # iter_suiteql returns a fresh iterator per call (per window)
     client.iter_suiteql.side_effect = [iter(p) for p in pages]
-    ext = SuiteQLExtractor(
-        row=row,
-        rest_client=client,
-        since=since,
-        server_time_provider=lambda: server_now,
-    )
-    return ext, client
+    return SuiteQLExtractor(row=row, rest_client=client), client
 
 
-def test_incremental_binds_state_placeholder():
-    row = _row(query="SELECT id FROM customer WHERE lastmodifieddate > :state", load_type="incremental_load")
-    ext, client = _extractor(row, [[{"id": "1"}]], since="2024-01-01T00:00:00Z")
-    ext.extract()
-    query = client.iter_suiteql.call_args[0][0]
-    assert ":state" not in query
-    assert "2024-01-01T00:00:00Z" in query
-
-
-def test_full_load_runs_query_verbatim():
+def test_query_run_verbatim_without_placeholders():
     row = _row(query="SELECT id FROM customer", load_type="full_load")
     ext, client = _extractor(row, [[{"id": "1"}]])
     result = ext.extract()
@@ -45,85 +29,55 @@ def test_full_load_runs_query_verbatim():
     assert result.tables[0].incremental is False
 
 
-def test_windowing_splits_large_range():
-    row = _row(
-        query="SELECT id FROM tx WHERE trandate BETWEEN :window_start AND :window_end",
-        window_size=30,
-        load_type="incremental_load",
-    )
-    ext, client = _extractor(
-        row,
-        [[{"id": "1"}], [{"id": "2"}], [{"id": "3"}]],
-        since="2024-01-01T00:00:00Z",
-        server_now="2024-03-02T00:00:00Z",
-    )
+def test_incremental_flag_reflected_on_table():
+    row = _row(load_type="incremental_load", primary_key=["id"])
+    ext, _ = _extractor(row, [[{"id": "1"}]])
     result = ext.extract()
-    # 2024-01-01 -> 2024-03-02 in 30-day windows == 3 windows
-    assert client.iter_suiteql.call_count == 3
-    queries = [c[0][0] for c in client.iter_suiteql.call_args_list]
-    assert "2024-01-01T00:00:00Z" in queries[0]
-    assert "2024-03-02T00:00:00Z" in queries[-1]
-    # rows from every window are concatenated into one table
-    assert [r["id"] for r in result.tables[0].rows] == ["1", "2", "3"]
+    assert result.tables[0].incremental is True
 
 
-def test_windowing_splits_on_full_load():
-    # Windowing must protect large FULL pulls too: with no `since`, the window start defaults to the
-    # epoch and the end is the pre-fetch server-time watermark, so the range is still split.
+def test_date_placeholders_substituted():
     row = _row(
-        query="SELECT id FROM tx WHERE trandate BETWEEN :window_start AND :window_end",
-        window_size=30,
+        query="SELECT id FROM tx WHERE trandate BETWEEN :date_from AND :date_to",
         load_type="full_load",
+        date_from="2024-01-01",
+        date_to="2024-03-01",
     )
-    ext, client = _extractor(
-        row,
-        [[{"id": "1"}], [{"id": "2"}], [{"id": "3"}]],
-        since=None,
-        server_now="1970-04-01T00:00:00Z",
-    )
-    result = ext.extract()
-    # epoch (1970-01-01) -> 1970-04-01 in 30-day windows == 3 windows, not a single unsplit query
-    assert client.iter_suiteql.call_count == 3
-    queries = [c[0][0] for c in client.iter_suiteql.call_args_list]
-    assert "1970-01-01T00:00:00Z" in queries[0]
-    assert ":window_start" not in queries[0]
-    assert [r["id"] for r in result.tables[0].rows] == ["1", "2", "3"]
+    ext, client = _extractor(row, [[{"id": "1"}]])
+    ext.extract()
+    query = client.iter_suiteql.call_args[0][0]
+    assert ":date_from" not in query
+    assert ":date_to" not in query
+    assert "2024-01-01" in query
+    assert "2024-03-01" in query
+    assert "TO_TIMESTAMP" in query
 
 
-def test_windowing_without_watermark_raises():
-    # Windowing needs a concrete end watermark; if server time can't be determined, fail fast.
+def test_no_substitution_when_no_placeholders():
+    row = _row(query="SELECT id FROM customer", load_type="full_load")
+    ext, client = _extractor(row, [[{"id": "1"}]])
+    ext.extract()
+    assert client.iter_suiteql.call_args[0][0] == "SELECT id FROM customer"
+
+
+def test_unparseable_date_raises_user_exception():
     row = _row(
-        query="SELECT id FROM tx WHERE trandate BETWEEN :window_start AND :window_end",
-        window_size=30,
+        query="SELECT id FROM tx WHERE trandate > :date_from",
         load_type="full_load",
+        date_from="not a date at all zzz",
+        date_to="now",
     )
-    client = mock.Mock()
-    client.iter_suiteql.side_effect = [iter([{"id": "1"}])]
-    ext = SuiteQLExtractor(row=row, rest_client=client, since=None, server_time_provider=None)
-    with pytest.raises(UserException):
+    ext, _ = _extractor(row, [[{"id": "1"}]])
+    with pytest.raises(UserException, match="date range"):
         ext.extract()
 
 
-def test_watermark_captured_before_fetch():
-    calls = []
-    client = mock.Mock()
-
-    def fake_iter(*a, **k):
-        calls.append("fetch")
-        return iter([{"id": "1"}])
-
-    client.iter_suiteql.side_effect = fake_iter
-
-    def provider():
-        calls.append("server_time")
-        return "2024-05-01T00:00:00Z"
-
-    row = _row(load_type="incremental_load")
-    ext = SuiteQLExtractor(row=row, rest_client=client, since=None, server_time_provider=provider)
+def test_no_state_produced():
+    # §4: the extraction result no longer carries any state.
+    row = _row(load_type="incremental_load", primary_key=["id"])
+    ext, _ = _extractor(row, [[{"id": "1"}]])
     result = ext.extract()
-    assert calls[0] == "server_time"
-    assert "fetch" in calls
-    assert result.state == {"last_run": "2024-05-01T00:00:00Z"}
+    assert not hasattr(result, "state")
 
 
 def test_typed_columns_inferred():

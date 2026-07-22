@@ -74,15 +74,15 @@
         "daysOverdue",
         "phone"
       ],
-      "hash": "sha256:0f211c540dc07b6cd5ee3c8da3453990ef8f66b11ee084823b9ddf92d0694902",
+      "hash": "sha256:1266792334393fafb0dcc73ed2c664cc26b1b23c29100bd9f643a72d1dba73a7",
       "row_count": 6,
       "size_bytes": 41236
     },
     "customer_incremental.csv.manifest": {
       "columns": null,
-      "hash": "sha256:3cb17df11b96d8f1e3061fb03f64631c7ce9e8bedd7f02be13f82b12db81b59a",
+      "hash": "sha256:b2702c4de95e88f75fd5032f063eff478ba1c6441fc426952a04b4822097c0ab",
       "row_count": null,
-      "size_bytes": 6546
+      "size_bytes": 6570
     }
   },
   "version": "1.0"

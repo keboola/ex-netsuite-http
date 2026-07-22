@@ -1,22 +1,20 @@
-"""``saved_search`` mode extractor — SOAP SuiteTalk.
+"""``saved_search`` mode extractor — SuiteTalk SOAP.
 
-Executes a saved search by id, pages the result set with ``searchMoreWithId`` and maps the SOAP
-records to flat dict rows. The watermark is NetSuite server time captured before the fetch. Full
-SOAP behaviour is verified by VCR in a later phase; the paging/mapping/state logic here is
-unit-tested with a mocked SOAP client.
+Executes a saved search by id, pages the result set with ``searchMoreWithId`` and maps the records
+to flat dict rows. Full SOAP behaviour is verified by VCR in a later phase; the paging/mapping logic
+here is unit-tested with a mocked SOAP client.
 
-Deferred variants (spec §4): async execution for very large searches (:meth:`_run_async`) and
-layered extra filters / date-parameterised criteria are extension seams, not wired in this version.
+Filtering is defined inside the saved search itself (there is no server-side extra-filter layering
+and no date watermark). Deferred variant (spec §4): async execution for very large searches
+(:meth:`_run_async`) is an extension seam, not wired in this version.
 """
 
 import logging
-from collections.abc import Callable
 from typing import Any
 
 from client.soap import SoapClient
 from configuration import SavedSearchRow
 from extractor.base import (
-    STATE_LAST_RUN,
     ExtractionResult,
     Extractor,
     OutputTable,
@@ -26,23 +24,12 @@ from extractor.base import (
 
 
 class SavedSearchExtractor(Extractor):
-    def __init__(
-        self,
-        row: SavedSearchRow,
-        soap_client: SoapClient,
-        since: str | None = None,
-        server_time_provider: Callable[[], str] | None = None,
-    ):
+    def __init__(self, row: SavedSearchRow, soap_client: SoapClient):
         self.row = row
         self.soap_client = soap_client
-        self.since = since
-        self.server_time_provider = server_time_provider
 
     def extract(self) -> ExtractionResult:
-        # Capture the watermark from NetSuite's clock BEFORE fetching (spec §2).
-        new_watermark = self._capture_watermark()
-
-        logging.info("Executing saved search '%s' via SOAP", self.row.saved_search_id)
+        logging.info("Executing saved search '%s'", self.row.saved_search_id)
         rows = self._fetch_rows()
 
         table = OutputTable(
@@ -53,23 +40,15 @@ class SavedSearchExtractor(Extractor):
             columns=collect_columns(rows) or None,
             column_types=infer_column_types(rows) or None,
         )
-        state = {STATE_LAST_RUN: new_watermark} if new_watermark else {}
-        return ExtractionResult(tables=[table], state=state)
+        return ExtractionResult(tables=[table])
 
     # ---- fetch + paging --------------------------------------------------
 
     def _fetch_rows(self) -> list[dict[str, Any]]:
-        # The incremental watermark IS layered server-side (a typed lastModifiedDate onOrAfter
-        # criterion). ``extra_filters``, however, are NOT applied server-side: encoding arbitrary
-        # criteria needs per-field SuiteTalk typing that varies by record type, so run_saved_search
-        # logs and skips them. Users must embed such filters in the saved search definition itself.
-        since = self.since if self.row.incremental else None
         raw = self.soap_client.run_saved_search(
             self.row.saved_search_id,
             search_record_type=self.row.search_record_type,
             page_size=self.row.page_size,
-            since=since,
-            extra_filters=self.row.extra_filters or None,
         )
         result = self._search_result(raw)
         rows = [self._to_dict(r) for r in self._records(result)]
@@ -82,15 +61,6 @@ class SavedSearchExtractor(Extractor):
             more = self._search_result(self.soap_client.search_more_with_id(search_id, page_index))
             rows.extend(self._to_dict(r) for r in self._records(more))
         return rows
-
-    # ---- watermark -------------------------------------------------------
-
-    def _capture_watermark(self) -> str | None:
-        # Persist a watermark on every successful run (incl. full loads) so a later full->incremental
-        # switch resumes from this run instead of re-pulling all history (spec §2).
-        if self.server_time_provider is None:
-            return None
-        return self.server_time_provider()
 
     # ---- SOAP result mapping --------------------------------------------
 

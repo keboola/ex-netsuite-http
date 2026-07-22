@@ -1,8 +1,9 @@
 """Sync actions and the client factories shared with ``run()``.
 
-The six UI-facing sync actions (testConnection, listRecordTypes, listFields, listSavedSearches,
-validateSuiteQL, previewRestlet) each call a real client and return a JSON result the UI understands.
-Failures raise :class:`UserException`, which the ``@sync_action`` wrapper renders to the UI.
+The UI-facing sync actions (testConnection, listRecordTypes, listFields, getColumns,
+listSavedSearches, validateSuiteQL, previewRestlet) each call a real client and return a JSON result
+the UI understands. Failures raise :class:`UserException`, which the ``@sync_action`` wrapper renders
+to the UI.
 
 The client factories (`build_signer`, `_rest_client`, …) live here too so both the sync actions and
 ``run()`` construct clients the same way. Mixed into :class:`component.Component`, which supplies
@@ -10,6 +11,7 @@ The client factories (`build_signer`, `_rest_client`, …) live here too so both
 """
 
 import json
+import logging
 
 from keboola.component.base import sync_action
 from keboola.component.exceptions import UserException
@@ -75,6 +77,24 @@ class SyncActionsMixin:
         properties = schema.get("properties", {}) or {}
         return [SelectElement(value=name, label=name) for name in properties]
 
+    @sync_action("getColumns")
+    def get_columns(self) -> list[SelectElement]:
+        """Suggest primary-key column options for the creatable PK picker, per mode.
+
+        record  -> the chosen record type's metadata fields.
+        suiteql -> the columns the query returns, probed by fetching a single row.
+        saved_search / restlet -> not knowable ahead of a run, so return nothing (the picker is
+        creatable, so the user types the key column names manually).
+        """
+        row = self.params.row
+        if isinstance(row, RecordRow) and row.record_type:
+            schema = self._rest_client().get_metadata_catalog(row.record_type)
+            properties = schema.get("properties", {}) or {}
+            return [SelectElement(value=name, label=name) for name in properties]
+        if isinstance(row, SuiteQLRow) and row.query:
+            return [SelectElement(value=name, label=name) for name in self._probe_suiteql_columns(row)]
+        return []
+
     @sync_action("listSavedSearches")
     def list_saved_searches(self) -> list[SelectElement]:
         """Populate the saved_search_id dropdown via SOAP."""
@@ -105,11 +125,30 @@ class SyncActionsMixin:
             row.script_id,
             row.deploy_id,
             method=row.method.value,
-            query_params=row.query_params,
-            body=row.request_body,
+            query_params=row.parsed_query_params(),
+            body=row.parsed_request_body(),
         )
         sample = json.dumps(payload)[:2000]
         return ValidationResult(f"RESTlet responded:\n{sample}", MessageType.INFO)
+
+    def _probe_suiteql_columns(self, row: SuiteQLRow) -> list[str]:
+        """Best-effort column list for a SuiteQL query: fetch one row and read its keys.
+
+        The SuiteQL response carries no schema, so columns are only knowable from a returned row. Any
+        failure (bad SQL, unbound date placeholders, zero rows) yields no suggestions rather than an
+        error — the picker is creatable, so the user can always type the key columns manually.
+        """
+        try:
+            payload = self._rest_client().suiteql_page(row.query, limit=1)
+        except Exception as exc:  # noqa: BLE001 — suggestion helper must never hard-fail the picker
+            logging.info("getColumns SuiteQL probe failed (%s); returning no suggestions.", type(exc).__name__)
+            return []
+        columns: list[str] = []
+        for item in payload.get("items") or []:
+            for key in item:
+                if key not in columns:
+                    columns.append(key)
+        return columns
 
     @staticmethod
     def _href_tail(item: dict) -> str:

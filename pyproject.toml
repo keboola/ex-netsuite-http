@@ -5,6 +5,7 @@ readme = "README.md"
 requires-python = "~=3.14.0"
 dependencies = [
     "keboola-component>=1.10.0",
+    "keboola-utils>=1.1.0",
     "pydantic>=2.11.7",
     "requests>=2.32.0",
     "zeep>=4.3.0",

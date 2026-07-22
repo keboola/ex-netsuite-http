@@ -19,16 +19,10 @@ def _row(**kw) -> RestletRow:
     return RestletRow.model_validate(params)
 
 
-def _extractor(row, rows, since=None):
+def _extractor(row, rows):
     client = mock.Mock()
     client.iter_records.return_value = iter(rows)
-    ext = RestletExtractor(
-        row=row,
-        restlet_client=client,
-        since=since,
-        server_time_provider=lambda: "2024-05-01T00:00:00Z",
-    )
-    return ext, client
+    return RestletExtractor(row=row, restlet_client=client), client
 
 
 def test_rows_mapped_and_record_path_forwarded():
@@ -42,20 +36,37 @@ def test_rows_mapped_and_record_path_forwarded():
     assert kwargs["cursor_field"] == "next"
 
 
-def test_state_captured_from_server_time_when_incremental():
-    row = _row(load_type="incremental_load")
+def test_json_query_params_and_body_parsed_and_forwarded():
+    # §7: query_params / request_body are authored as JSON strings and parsed before the call.
+    row = _row(load_type="full_load", query_params='{"since": "2024-01-01"}', request_body='{"filter": "active"}')
+    ext, client = _extractor(row, [{"id": "1"}])
+    ext.extract()
+    _, kwargs = client.iter_records.call_args
+    assert kwargs["query_params"] == {"since": "2024-01-01"}
+    assert kwargs["body"] == {"filter": "active"}
+
+
+def test_empty_json_fields_default_to_empty_and_none():
+    row = _row(load_type="full_load")
+    ext, client = _extractor(row, [{"id": "1"}])
+    ext.extract()
+    _, kwargs = client.iter_records.call_args
+    assert kwargs["query_params"] == {}
+    assert kwargs["body"] is None
+
+
+def test_incremental_flag_reflected_on_table():
+    row = _row(load_type="incremental_load", primary_key=["id"])
     ext, _ = _extractor(row, [{"id": "1"}])
     result = ext.extract()
-    assert result.state == {"last_run": "2024-05-01T00:00:00Z"}
     assert result.tables[0].incremental is True
 
 
-def test_full_load_also_persists_watermark():
-    # NTH2: full loads persist the watermark so a later full->incremental switch resumes correctly.
+def test_no_state_produced():
     row = _row(load_type="full_load")
     ext, _ = _extractor(row, [{"id": "1"}])
     result = ext.extract()
-    assert result.state == {"last_run": "2024-05-01T00:00:00Z"}
+    assert not hasattr(result, "state")
 
 
 def test_native_column_types_inferred_from_rows():
@@ -66,11 +77,3 @@ def test_native_column_types_inferred_from_rows():
     table = ext.extract().tables[0]
     assert table.columns == ["id", "amount", "qty", "active"]
     assert table.column_types == {"id": "string", "amount": "numeric", "qty": "integer", "active": "boolean"}
-
-
-def test_incremental_since_passed_as_query_param():
-    row = _row(load_type="incremental_load", incremental_field="modified_since")
-    ext, client = _extractor(row, [{"id": "1"}], since="2024-01-01T00:00:00Z")
-    ext.extract()
-    _, kwargs = client.iter_records.call_args
-    assert kwargs["query_params"]["modified_since"] == "2024-01-01T00:00:00Z"

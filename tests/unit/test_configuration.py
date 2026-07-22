@@ -63,6 +63,12 @@ def test_restlet_mode_parses_to_restlet_row():
     assert cfg.row.method == HttpMethod.POST
 
 
+def test_incremental_field_removed_from_model():
+    # §4: incremental_field is gone; Load Type is purely the storage write mode.
+    cfg = _cfg(mode="suiteql", query="SELECT 1")
+    assert not hasattr(cfg.row, "incremental_field")
+
+
 def test_missing_secret_raises_user_exception():
     data = {k: v for k, v in CONNECTION.items() if k != "#consumer_key"}
     data["mode"] = "suiteql"
@@ -155,35 +161,92 @@ def test_sync_action_construction_stays_lenient():
     assert isinstance(cfg.row, RecordRow)
 
 
-def test_extra_filters_typed_as_list_of_dict():
-    cfg = _cfg(mode="saved_search", saved_search_id="cs", extra_filters=[{"field": "status"}])
-    assert cfg.row.extra_filters == [{"field": "status"}]
+def test_extra_filters_field_removed():
+    # §6: extra_filters is gone (it never worked); filters live in the saved search itself.
+    cfg = _cfg(mode="saved_search", saved_search_id="cs")
+    assert not hasattr(cfg.row, "extra_filters")
 
 
-# ---- NTH5: window_size requires the windowing placeholders -----------------
+def test_window_size_field_removed():
+    # §3: window_size and the windowing machinery are gone, replaced by date_from/date_to.
+    cfg = _cfg(mode="suiteql", query="SELECT 1", load_type="full_load")
+    assert not hasattr(cfg.row, "window_size")
 
 
-def test_window_size_without_placeholders_rejected_at_run():
-    cfg = _cfg(mode="suiteql", query="SELECT id FROM tx", load_type="full_load", window_size=30)
-    with pytest.raises(UserException, match="window_start"):
+# ---- §3: SuiteQL date range (date_from / date_to) --------------------------
+
+
+def test_suiteql_date_defaults():
+    cfg = _cfg(mode="suiteql", query="SELECT 1")
+    assert cfg.row.date_from == ""
+    assert cfg.row.date_to == "now"
+
+
+def test_date_from_set_without_placeholders_rejected_at_run():
+    cfg = _cfg(mode="suiteql", query="SELECT id FROM tx", load_type="full_load", date_from="5 days ago")
+    with pytest.raises(UserException, match="date_from"):
         cfg.validate_for_run()
 
 
-def test_window_size_with_placeholders_passes():
+def test_placeholders_without_date_from_rejected_at_run():
     cfg = _cfg(
         mode="suiteql",
-        query="SELECT id FROM tx WHERE trandate BETWEEN ':window_start' AND ':window_end'",
+        query="SELECT id FROM tx WHERE trandate BETWEEN :date_from AND :date_to",
         load_type="full_load",
-        window_size=30,
+    )
+    with pytest.raises(UserException, match="date_from"):
+        cfg.validate_for_run()
+
+
+def test_date_range_with_placeholders_passes():
+    cfg = _cfg(
+        mode="suiteql",
+        query="SELECT id FROM tx WHERE trandate BETWEEN :date_from AND :date_to",
+        load_type="full_load",
+        date_from="2024-01-01",
     )
     cfg.validate_for_run()  # no raise
 
 
-def test_no_windowing_when_window_size_zero():
-    cfg = _cfg(mode="suiteql", query="SELECT id FROM tx", load_type="full_load", window_size=0)
-    cfg.validate_for_run()  # no placeholder requirement
+def test_no_date_range_no_placeholders_passes():
+    cfg = _cfg(mode="suiteql", query="SELECT id FROM tx", load_type="full_load")
+    cfg.validate_for_run()  # date_to default "now" is ignored when date_from is empty
 
 
-def test_window_column_field_removed():
-    cfg = _cfg(mode="suiteql", query="SELECT 1", load_type="full_load")
-    assert not hasattr(cfg.row, "window_column")
+# ---- §7: RESTlet JSON body / query params ----------------------------------
+
+
+def test_restlet_json_fields_parsed():
+    cfg = _cfg(
+        mode="restlet",
+        script_id="1",
+        deploy_id="1",
+        query_params='{"a": 1}',
+        request_body='{"b": 2}',
+    )
+    assert cfg.row.parsed_query_params() == {"a": 1}
+    assert cfg.row.parsed_request_body() == {"b": 2}
+
+
+def test_restlet_empty_json_fields_default():
+    cfg = _cfg(mode="restlet", script_id="1", deploy_id="1")
+    assert cfg.row.parsed_query_params() == {}
+    assert cfg.row.parsed_request_body() is None
+
+
+def test_restlet_invalid_json_query_params_rejected_at_run():
+    cfg = _cfg(mode="restlet", script_id="1", deploy_id="1", load_type="full_load", query_params="{not json}")
+    with pytest.raises(UserException, match="query_params"):
+        cfg.validate_for_run()
+
+
+def test_restlet_invalid_json_request_body_rejected_at_run():
+    cfg = _cfg(mode="restlet", script_id="1", deploy_id="1", load_type="full_load", request_body="{bad}")
+    with pytest.raises(UserException, match="request_body"):
+        cfg.validate_for_run()
+
+
+def test_restlet_query_params_must_be_object():
+    cfg = _cfg(mode="restlet", script_id="1", deploy_id="1", load_type="full_load", query_params="[1, 2, 3]")
+    with pytest.raises(UserException, match="query_params"):
+        cfg.validate_for_run()

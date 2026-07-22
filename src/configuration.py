@@ -4,8 +4,14 @@ The platform delivers a single **merged** ``config.json`` (root ``parameters`` m
 row's ``parameters``), so connection fields and per-mode row fields arrive in one flat dict.
 ``Configuration`` splits that dict into a always-present :class:`Connection` and an optional,
 mode-discriminated row model (absent for config-level contexts such as ``testConnection``).
+
+Load Type is purely the Storage write mode: full load rewrites the table (``incremental=False``),
+incremental load upserts by the primary key (``incremental=True``). There is no state-file watermark;
+"recent data" is controlled by the SuiteQL date range, the record ``q`` filter, or the saved search
+definition itself.
 """
 
+import json
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
@@ -26,9 +32,32 @@ from pydantic import (
 # runtime-only rules below (required fields, incremental+PK) fire only for an actual extraction run.
 _RUNTIME_CONTEXT = {"runtime": True}
 
+# SuiteQL date placeholders substituted at run time from the parsed date range (see extractor.suiteql).
+_DATE_FROM_PLACEHOLDER = ":date_from"
+_DATE_TO_PLACEHOLDER = ":date_to"
+
 
 def _is_runtime(info: ValidationInfo) -> bool:
     return bool(info.context) and bool(info.context.get("runtime"))
+
+
+def parse_json_field(field_name: str, raw: str, *, require_object: bool) -> Any:
+    """Parse a user-authored JSON string field into Python, with a clean UserException on failure.
+
+    Returns ``{}`` (object fields) / ``None`` (body) for an empty value. Used for the RESTlet
+    ``query_params`` (must be a JSON object) and ``request_body`` (any JSON value) fields, which the
+    user types as free text in the UI and which are parsed at run time.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return {} if require_object else None
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise UserException(f"'{field_name}' must be valid JSON: {exc}") from exc
+    if require_object and not isinstance(value, dict):
+        raise UserException(f"'{field_name}' must be a JSON object (got {type(value).__name__}).")
+    return value
 
 
 class LoadType(StrEnum):
@@ -72,7 +101,6 @@ class BaseRow(BaseModel):
     output_table_name: str = ""
     primary_key: list[str] = Field(default_factory=list)
     load_type: LoadType = LoadType.incremental_load
-    incremental_field: str = "lastmodifieddate"
 
     @computed_field
     @property
@@ -111,10 +139,13 @@ class SuiteQLRow(BaseRow):
     mode: Literal["suiteql"]
     query: str = ""
     page_limit: int = 1000
-    # Date windowing keeps large pulls under NetSuite's ~100k-row result ceiling by running the
-    # query once per window. The user drives it by placing ':window_start'/':window_end' placeholders
-    # in their query's WHERE clause; window_size is the span (in days) of each window.
-    window_size: int = 0
+    # Optional date range. When the query contains the ':date_from' / ':date_to' placeholders, these
+    # are parsed with Keboola's dateparser (relative strings like "5 days ago" or absolute dates) and
+    # substituted into the query at run time (see extractor.suiteql). Leaving date_from empty disables
+    # substitution. A single range is issued verbatim — no auto sub-chunking — so a range that would
+    # exceed NetSuite's ~100k SuiteQL row ceiling should be narrowed.
+    date_from: str = ""
+    date_to: str = "now"
 
     @model_validator(mode="after")
     def _validate_required(self, info: ValidationInfo) -> SuiteQLRow:
@@ -122,12 +153,17 @@ class SuiteQLRow(BaseRow):
             return self
         if not self.query:
             raise UserException("suiteql mode requires a 'query'.")
-        # Windowing is placeholder-driven; a window_size with no placeholders would silently do nothing.
-        if self.window_size > 0 and not (":window_start" in self.query and ":window_end" in self.query):
+        has_placeholders = _DATE_FROM_PLACEHOLDER in self.query or _DATE_TO_PLACEHOLDER in self.query
+        if self.date_from and not has_placeholders:
             raise UserException(
-                "window_size enables date windowing, which requires ':window_start' and ':window_end' "
-                "placeholders in the query WHERE clause (e.g. WHERE lastmodifieddate BETWEEN "
-                "':window_start' AND ':window_end'). Add both placeholders or set window_size to 0."
+                "A date range (Start Date) is set but the query has no ':date_from'/':date_to' "
+                "placeholders, so it would do nothing. Add the placeholders to the WHERE clause "
+                "(e.g. WHERE lastmodifieddate BETWEEN :date_from AND :date_to) or clear Start Date."
+            )
+        if has_placeholders and not self.date_from:
+            raise UserException(
+                "The query uses ':date_from'/':date_to' placeholders but Start Date (date_from) is "
+                "empty. Provide a start date (e.g. '5 days ago' or '2024-01-01')."
             )
         return self
 
@@ -135,12 +171,11 @@ class SuiteQLRow(BaseRow):
 class SavedSearchRow(BaseRow):
     mode: Literal["saved_search"]
     saved_search_id: str = ""
-    # The SuiteTalk SOAP mechanism runs a saved search via a typed ``<RecordType>SearchAdvanced``
-    # record, so the saved search's underlying record type must be known (e.g. Transaction, Customer,
-    # Item). It drives which SearchAdvanced type the SOAP client instantiates.
+    # The saved search runs via a typed ``<RecordType>SearchAdvanced`` record, so the underlying
+    # record type must be known (Transaction, Customer, Item, …). Creatable in the UI: any value is
+    # allowed, including custom record types (customrecord_* -> their SearchAdvanced type).
     search_record_type: str = "Transaction"
     page_size: int = 1000
-    extra_filters: list[dict[str, Any]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_required(self, info: ValidationInfo) -> SavedSearchRow:
@@ -150,8 +185,8 @@ class SavedSearchRow(BaseRow):
             if not self.search_record_type:
                 raise UserException(
                     "saved_search mode requires 'search_record_type' (the saved search's underlying "
-                    "record type, e.g. Transaction, Customer, Item) — it selects the SuiteTalk "
-                    "SearchAdvanced request type."
+                    "record type, e.g. Transaction, Customer, Item) — it selects the request type "
+                    "used to run the search."
                 )
         return self
 
@@ -161,15 +196,28 @@ class RestletRow(BaseRow):
     script_id: str = ""
     deploy_id: str = ""
     method: HttpMethod = HttpMethod.GET
-    query_params: dict[str, Any] = Field(default_factory=dict)
-    request_body: dict[str, Any] | None = None
+    # query_params and request_body are authored as free-text JSON in the UI and parsed at run time
+    # (see parsed_query_params / parsed_request_body). query_params must be a JSON object; request_body
+    # may be any JSON value (object or array).
+    query_params: str = ""
+    request_body: str = ""
     record_path: str = ""
     pagination_cursor_field: str = ""
 
+    def parsed_query_params(self) -> dict[str, Any]:
+        return parse_json_field("query_params", self.query_params, require_object=True)
+
+    def parsed_request_body(self) -> Any:
+        return parse_json_field("request_body", self.request_body, require_object=False)
+
     @model_validator(mode="after")
     def _validate_required(self, info: ValidationInfo) -> RestletRow:
-        if _is_runtime(info) and (not self.script_id or not self.deploy_id):
-            raise UserException("restlet mode requires both 'script_id' and 'deploy_id'.")
+        if _is_runtime(info):
+            if not self.script_id or not self.deploy_id:
+                raise UserException("restlet mode requires both 'script_id' and 'deploy_id'.")
+            # Fail fast on malformed JSON at run start rather than mid-fetch.
+            self.parsed_query_params()
+            self.parsed_request_body()
         return self
 
 

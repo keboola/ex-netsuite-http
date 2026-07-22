@@ -74,15 +74,15 @@
         "externalId",
         "phone"
       ],
-      "hash": "sha256:40fc91f637cb86cea4cc8494a26b13ee95c33ccc75db696d68c7eef69b27eaaa",
+      "hash": "sha256:36a39b48efb18fd117ba144522d9a66a3f354baff2b4343291037f6c73306b9b",
       "row_count": 3,
       "size_bytes": 25682
     },
     "customer_filtered.csv.manifest": {
       "columns": null,
-      "hash": "sha256:71e9437eefc7eccdd96ca0d4797eaf45e55fa85d8ef03c3f6e28be599a882ce4",
+      "hash": "sha256:0ef7003a50c70e0d40fb605a30c59a47eb9524985fccb94e4a5203f70711102d",
       "row_count": null,
-      "size_bytes": 6547
+      "size_bytes": 6571
     }
   },
   "version": "1.0"

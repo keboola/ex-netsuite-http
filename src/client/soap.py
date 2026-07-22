@@ -181,31 +181,17 @@ class SoapClient:
         saved_search_id: str,
         search_record_type: str = "Transaction",
         page_size: int = 1000,
-        since: str | None = None,
-        extra_filters: list[dict[str, Any]] | None = None,
     ) -> Any:
         """Execute a saved search by id via the SuiteTalk ``search`` op and return the first page.
 
         NetSuite runs a saved search through a typed ``<RecordType>SearchAdvanced`` record carrying a
         ``savedSearchId`` attribute — **not** a ``SearchRequest`` (which has no such field). The record
-        type comes from the row config (``search_record_type``: Transaction, Customer, Item, …) and
-        selects which SearchAdvanced type is instantiated. When ``since`` is set, an incremental
-        ``lastModifiedDate onOrAfter`` criterion is layered on via the typed ``<RecordType>SearchBasic``.
-        Arbitrary ``extra_filters`` need per-field SuiteTalk typing that varies by record type and
-        cannot be encoded generically, so they are not applied server-side here (embed them in the
-        saved search itself); a warning is logged. The paging loop and mapping live in the extractor.
+        type comes from the row config (``search_record_type``: Transaction, Customer, Item, a custom
+        record type, …) and selects which SearchAdvanced type is instantiated. All filtering is defined
+        inside the saved search itself. The paging loop and mapping live in the extractor.
         """
         advanced_type = self._advanced_search_type(search_record_type)
         search_record = advanced_type(savedSearchId=saved_search_id)
-        criteria = self._build_criteria(search_record_type, since)
-        if criteria is not None:
-            search_record.criteria = criteria
-        if extra_filters:
-            logging.warning(
-                "saved_search extra_filters are not applied server-side (SuiteTalk typed criteria are "
-                "record-type specific); embed the filter in the saved search itself. Ignoring %d filter(s).",
-                len(extra_filters),
-            )
         prefs = self._search_preferences(page_size)
         return self._invoke(
             "search",
@@ -229,26 +215,6 @@ class SoapClient:
                 "Use the saved search's underlying record type (e.g. Transaction, Customer, Item)."
             )
         return advanced
-
-    def _build_criteria(self, search_record_type: str, since: str | None) -> Any:
-        """Build a typed ``<RecordType>Search`` with an incremental lastModifiedDate criterion.
-
-        Returns None when there is no watermark, or when the record type has no typed
-        ``lastModifiedDate`` search field (then rely on the saved search's own date criterion)."""
-        if not since:
-            return None
-        search_type = self._find_named_type(f"{search_record_type}Search")
-        basic_type = self._find_named_type(f"{search_record_type}SearchBasic")
-        if search_type is None or basic_type is None or "lastModifiedDate" not in basic_type.signature():
-            logging.warning(
-                "Incremental lastModifiedDate filter not applied: no typed search field for record "
-                "type '%s'; relying on the saved search's own date criterion.",
-                search_record_type,
-            )
-            return None
-        date_field = self._client.get_type(f"{{{_CORE_NS.format(v=self.version)}}}SearchDateField")
-        basic = basic_type(lastModifiedDate=date_field(operator="onOrAfter", searchValue=since))
-        return search_type(basic=basic)
 
     def get_saved_search(self, search_type: str) -> Any:
         """List saved searches of a given record type (powers the listSavedSearches sync action)."""

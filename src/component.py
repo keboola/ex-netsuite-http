@@ -1,7 +1,7 @@
 """NetSuite HTTP Extractor — component entrypoint.
 
 ``run()`` is a thin orchestrator: validate config → build the TBA signer → select the extractor for
-the row's mode → run it → write the output tables, manifests and state. All HTTP/SOAP lives under
+the row's mode → run it → write the output tables and manifests. All HTTP/SOAP lives under
 ``client/`` and all mapping under ``extractor/``; no business logic lives here.
 """
 
@@ -10,7 +10,6 @@ import json
 import logging
 import re
 from collections import OrderedDict
-from collections.abc import Callable
 from typing import Any
 
 from keboola.component.base import ComponentBase
@@ -23,7 +22,7 @@ from client.rest import RestClient
 from client.restlet import RestletClient
 from client.soap import SoapClient
 from configuration import Configuration, RecordRow, RestletRow, SavedSearchRow, SuiteQLRow
-from extractor.base import STATE_LAST_RUN, ExtractionResult, Extractor, OutputTable
+from extractor.base import ExtractionResult, Extractor, OutputTable
 from extractor.record import RecordExtractor
 from extractor.restlet import RestletExtractor
 from extractor.saved_search import SavedSearchExtractor
@@ -128,46 +127,33 @@ class Component(SyncActionsMixin, ComponentBase):
     # ---- orchestration ---------------------------------------------------
 
     def run(self):
-        """Validate → build signer → select extractor by mode → run → write output + state."""
+        """Validate → build signer → select extractor by mode → run → write output tables."""
         row = self.params.validate_for_run()
         signer = self.build_signer()
         rest_client = RestClient(signer)
-        since = self._load_since(row.incremental)
-        server_time: Callable[[], str] = rest_client.server_time
 
-        extractor = self._select_extractor(row, signer, rest_client, since, server_time)
+        extractor = self._select_extractor(row, signer, rest_client)
         result = extractor.extract()
 
         self._write_result(result)
-        self._write_state(result)
 
     def _select_extractor(
         self,
         row: RecordRow | SuiteQLRow | SavedSearchRow | RestletRow,
         signer: TBASigner,
         rest_client: RestClient,
-        since: str | None,
-        server_time: Callable[[], str],
     ) -> Extractor:
         if isinstance(row, RecordRow):
-            return RecordExtractor(row, rest_client, since=since, server_time_provider=server_time)
+            return RecordExtractor(row, rest_client)
         if isinstance(row, SuiteQLRow):
-            return SuiteQLExtractor(row, rest_client, since=since, server_time_provider=server_time)
+            return SuiteQLExtractor(row, rest_client)
         if isinstance(row, SavedSearchRow):
-            return SavedSearchExtractor(row, SoapClient(signer), since=since, server_time_provider=server_time)
+            return SavedSearchExtractor(row, SoapClient(signer))
         if isinstance(row, RestletRow):
-            return RestletExtractor(row, RestletClient(signer), since=since, server_time_provider=server_time)
+            return RestletExtractor(row, RestletClient(signer))
         raise UserException(f"Unsupported mode: {getattr(row, 'mode', None)}")
 
-    # ---- config / signer helpers ----------------------------------------
-
-    def _load_since(self, incremental: bool) -> str | None:
-        if not incremental:
-            return None
-        state = self.get_state_file() or {}
-        return state.get(STATE_LAST_RUN)
-
-    # ---- output / state --------------------------------------------------
+    # ---- output ----------------------------------------------------------
 
     def _write_result(self, result: ExtractionResult) -> None:
         for table in result.tables:
@@ -245,12 +231,6 @@ class Component(SyncActionsMixin, ComponentBase):
         if isinstance(value, (dict, list)):
             return json.dumps(value)
         return value
-
-    def _write_state(self, result: ExtractionResult) -> None:
-        # State is advanced ONLY after a successful output write (spec §2): a failed run keeps the
-        # old watermark and is safely retried.
-        if result.state:
-            self.write_state_file(result.state)
 
 
 if __name__ == "__main__":

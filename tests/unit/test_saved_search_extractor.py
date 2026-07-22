@@ -1,7 +1,7 @@
-"""Unit tests for the saved-search extractor's paging/mapping/state (mocked SOAP client).
+"""Unit tests for the saved-search extractor's paging/mapping (mocked SOAP client).
 
-Full SOAP behaviour is VCR-covered later; here we lock the searchMoreWithId paging loop, record
-mapping and watermark handling with lightweight fake result objects."""
+Full SOAP behaviour is VCR-covered later; here we lock the searchMoreWithId paging loop and record
+mapping with lightweight fake result objects."""
 
 from types import SimpleNamespace
 from typing import Any
@@ -56,6 +56,15 @@ def test_search_more_with_id_paging():
     assert client.search_more_with_id.call_count == 2
 
 
+def test_search_record_type_forwarded():
+    client = mock.Mock()
+    client.run_saved_search.return_value = _result([{"id": "1"}])
+    ext = SavedSearchExtractor(row=_row(load_type="full_load", search_record_type="Customer"), soap_client=client)
+    ext.extract()
+    _, kwargs = client.run_saved_search.call_args
+    assert kwargs["search_record_type"] == "Customer"
+
+
 def test_native_column_types_inferred_from_rows():
     # T2: saved_search output must carry native column types inferred from the mapped records.
     client = mock.Mock()
@@ -66,48 +75,17 @@ def test_native_column_types_inferred_from_rows():
     assert table.column_types == {"id": "string", "amount": "numeric", "count": "integer", "flag": "boolean"}
 
 
-def test_state_captured_from_server_time():
+def test_incremental_flag_reflected_on_table():
     client = mock.Mock()
     client.run_saved_search.return_value = _result([{"id": "1"}])
-    ext = SavedSearchExtractor(
-        row=_row(load_type="incremental_load"),
-        soap_client=client,
-        server_time_provider=lambda: "2024-05-01T00:00:00Z",
-    )
+    ext = SavedSearchExtractor(row=_row(load_type="incremental_load", primary_key=["id"]), soap_client=client)
     result = ext.extract()
-    assert result.state == {"last_run": "2024-05-01T00:00:00Z"}
     assert result.tables[0].incremental is True
 
 
-def test_incremental_since_forwarded_as_server_side_filter():
-    # I1: the stored watermark must be applied as a lastModifiedDate criterion server-side.
+def test_no_state_produced():
     client = mock.Mock()
     client.run_saved_search.return_value = _result([{"id": "1"}])
-    ext = SavedSearchExtractor(
-        row=_row(load_type="incremental_load"),
-        soap_client=client,
-        since="2024-01-01T00:00:00Z",
-    )
-    ext.extract()
-    _, kwargs = client.run_saved_search.call_args
-    assert kwargs["since"] == "2024-01-01T00:00:00Z"
-
-
-def test_full_load_does_not_forward_since():
-    client = mock.Mock()
-    client.run_saved_search.return_value = _result([{"id": "1"}])
-    ext = SavedSearchExtractor(row=_row(load_type="full_load"), soap_client=client, since="2024-01-01T00:00:00Z")
-    ext.extract()
-    _, kwargs = client.run_saved_search.call_args
-    assert kwargs["since"] is None
-
-
-def test_extra_filters_forwarded_to_search():
-    # I2: extra_filters must be wired into the search, not logged and dropped.
-    client = mock.Mock()
-    client.run_saved_search.return_value = _result([{"id": "1"}])
-    filters = [{"field": "status", "operator": "anyOf", "value": "open"}]
-    ext = SavedSearchExtractor(row=_row(load_type="full_load", extra_filters=filters), soap_client=client)
-    ext.extract()
-    _, kwargs = client.run_saved_search.call_args
-    assert kwargs["extra_filters"] == filters
+    ext = SavedSearchExtractor(row=_row(load_type="full_load"), soap_client=client)
+    result = ext.extract()
+    assert not hasattr(result, "state")

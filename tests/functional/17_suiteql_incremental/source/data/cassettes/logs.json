@@ -5,20 +5,14 @@
     {
       "level": "INFO",
       "logger": "root",
-      "message": "Loading state file..",
-      "timestamp": "2026-07-21T12:54:39.619Z"
-    },
-    {
-      "level": "INFO",
-      "logger": "root",
       "message": "Running SuiteQL query",
-      "timestamp": "2026-07-21T12:54:39.859Z"
+      "timestamp": "2026-07-22T16:01:11.558Z"
     },
     {
       "level": "INFO",
       "logger": "root",
       "message": "Wrote 5 rows to table 'suiteql_incremental'.",
-      "timestamp": "2026-07-21T12:54:40.066Z"
+      "timestamp": "2026-07-22T16:01:11.838Z"
     }
   ]
 }

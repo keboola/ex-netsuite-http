@@ -1,20 +1,19 @@
 """Shared contract for the per-mode extractors.
 
 An extractor turns one configured row into an :class:`ExtractionResult`: a list of output tables
-(streamed rows + resolved name/PK/incremental) plus the new state to persist. Extractors own all
-NetSuite interaction and row mapping; ``component.py`` owns the platform I/O (writing CSVs, manifests
-and the state file). Keeping the two apart makes extractors unit-testable with mocked clients and no
-data directory.
+(streamed rows + resolved name/PK/incremental). Extractors own all NetSuite interaction and row
+mapping; ``component.py`` owns the platform I/O (writing CSVs and manifests). Keeping the two apart
+makes extractors unit-testable with mocked clients and no data directory.
+
+There is no state-file watermark: Load Type is purely the Storage write mode (full rewrite vs
+PK upsert). "Recent data" is bounded by the SuiteQL date range, the record ``q`` filter, or the
+saved search itself — not by a persisted cursor.
 """
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
-
-# Single source of truth for the incremental watermark key in the state file (imported by
-# component.py and every extractor so the key can never drift between writer and readers).
-STATE_LAST_RUN = "last_run"
 
 
 @dataclass
@@ -32,10 +31,9 @@ class OutputTable:
 
 @dataclass
 class ExtractionResult:
-    """Everything a run produces: the tables to write and the state to persist on success."""
+    """Everything a run produces: the tables to write."""
 
     tables: list[OutputTable]
-    state: dict[str, Any] = field(default_factory=dict)
 
 
 class Extractor(ABC):

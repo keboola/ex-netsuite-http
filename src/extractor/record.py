@@ -1,9 +1,8 @@
 """``record`` mode extractor — REST Record API first.
 
-Fetches a Record collection with an optional ``fields`` projection and ``q`` filter (the incremental
-``lastModifiedDate ON_OR_AFTER`` clause is folded in for incremental runs), then handles sublists
-either by flattening them into a JSON column on the parent row or by splitting them into a child
-table keyed to the parent id.
+Fetches a Record collection with an optional ``fields`` projection and ``q`` filter, then handles
+sublists either by flattening them into a JSON column on the parent row or by splitting them into a
+child table keyed to the parent id.
 
 Deferred variant (spec §4): a transparent REST→SOAP fallback when a record type is not REST-exposed
 or a join is required. The seam is present (:meth:`_soap_fallback`) but the automatic trigger is not
@@ -12,8 +11,6 @@ wired pending sandbox coverage and user sign-off.
 
 import json
 import logging
-from collections.abc import Callable
-from datetime import datetime
 from typing import Any
 
 from keboola.component.exceptions import UserException
@@ -21,7 +18,6 @@ from keboola.component.exceptions import UserException
 from client.rest import RestClient
 from configuration import RecordRow, SublistHandling
 from extractor.base import (
-    STATE_LAST_RUN,
     ExtractionResult,
     Extractor,
     OutputTable,
@@ -33,38 +29,12 @@ from extractor.base import (
 _CHILD_KEY_CANDIDATES = ("line", "lineuniquekey", "id", "key", "sequence", "seq")
 
 
-def _ns_date(iso: str) -> str:
-    """Render an ISO-8601 UTC watermark as the ``M/D/YYYY`` date the REST record ``q`` grammar wants.
-
-    NetSuite's Record collection ``q`` date operators (``ON_OR_AFTER`` …) reject an ISO-8601
-    timestamp (400) — confirmed against the live sandbox — and accept ``M/D/YYYY``. The watermark is
-    therefore truncated to date granularity for the ``q`` filter (a day of overlap is re-pulled and
-    de-duplicated by the primary key on the incremental upsert).
-    """
-    try:
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-    except ValueError:
-        return iso
-    return f"{dt.month}/{dt.day}/{dt.year}"
-
-
 class RecordExtractor(Extractor):
-    def __init__(
-        self,
-        row: RecordRow,
-        rest_client: RestClient,
-        since: str | None = None,
-        server_time_provider: Callable[[], str] | None = None,
-    ):
+    def __init__(self, row: RecordRow, rest_client: RestClient):
         self.row = row
         self.rest_client = rest_client
-        self.since = since
-        self.server_time_provider = server_time_provider
 
     def extract(self) -> ExtractionResult:
-        # Capture the watermark from NetSuite's clock BEFORE fetching (spec §2).
-        new_watermark = self._capture_watermark()
-
         q = self._build_q()
         logging.info("Fetching record collection '%s' (q=%s)", self.row.record_type, q)
         records = self._fetch_records(q)
@@ -75,8 +45,7 @@ class RecordExtractor(Extractor):
         else:
             tables = [self._flatten_table(records, table_name)]
 
-        state = {STATE_LAST_RUN: new_watermark} if new_watermark else {}
-        return ExtractionResult(tables=tables, state=state)
+        return ExtractionResult(tables=tables)
 
     # ---- fetch -----------------------------------------------------------
 
@@ -112,24 +81,12 @@ class RecordExtractor(Extractor):
             SublistHandling.child_table,
         )
 
-    # ---- watermark / filter ---------------------------------------------
-
-    def _capture_watermark(self) -> str | None:
-        # Persist a watermark on every successful run (incl. full loads) so a later full->incremental
-        # switch resumes from this run instead of re-pulling all history (spec §2).
-        if self.server_time_provider is None:
-            return None
-        return self.server_time_provider()
+    # ---- filter ----------------------------------------------------------
 
     def _build_q(self) -> str | None:
-        clauses: list[str] = []
-        if self.row.query_filter:
-            clauses.append(self.row.query_filter)
-        if self.row.incremental and self.since:
-            clauses.append(f'{self.row.incremental_field} ON_OR_AFTER "{_ns_date(self.since)}"')
-        if not clauses:
+        if not self.row.query_filter:
             return None
-        return " AND ".join(f"({c})" for c in clauses)
+        return self.row.query_filter
 
     # ---- sublist handling ------------------------------------------------
 

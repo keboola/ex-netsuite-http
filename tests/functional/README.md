@@ -30,22 +30,20 @@ a passed-off live recording.
 **What the mock tests do:** they drive the **real** `SavedSearchExtractor` / `RestletExtractor` (and
 the real `RestletClient` HTTP path via the `responses` library) against synthetic response fixtures
 modeled on NetSuite's documented shapes (`tests/functional_mock/fixtures/`). They assert row
-mapping, `searchMoreWithId` / marker-cursor pagination, `extra_filters`/incremental forwarding,
-error surfacing, and state — everything except the live wire format.
+mapping, `searchMoreWithId` / marker-cursor pagination, `search_record_type` forwarding, JSON
+body/query-param parsing, error surfacing, and the incremental-load flag — everything except the
+live wire format.
 
-- saved_search: basic result, `searchMoreWithId` paging (2 pages), extra_filters + incremental +
-  state. The SOAP client runs a saved search the real SuiteTalk way — a typed
-  `<RecordType>SearchAdvanced` record (chosen by the row's `search_record_type`) carrying
-  `savedSearchId`, with an incremental `lastModifiedDate onOrAfter` criterion layered on via the
-  typed `<RecordType>SearchBasic`. That request **shape is validated offline against the bundled
+- saved_search: basic result, `searchMoreWithId` paging (2 pages), `search_record_type` forwarding.
+  The SOAP client runs a saved search the real SuiteTalk way — a typed `<RecordType>SearchAdvanced`
+  record (chosen by the row's `search_record_type`) carrying `savedSearchId`. Filtering is defined
+  inside the saved search itself. That request **shape is validated offline against the bundled
   WSDL** by `tests/unit/test_soap_client.py::test_saved_search_request_builds_and_validates_offline`
   (zeep type-checks the request at serialization, which is what caught the earlier
   `SearchRequest(savedSearchId=...)` signature bug).
   - **Residual gap:** only the *live request/response round-trip* is still unverified — no sandbox
-    saved search exists to execute it against. Also, arbitrary `extra_filters` are **not** applied
-    server-side (per-field SuiteTalk typing is record-type specific); embed such filters in the
-    saved search itself. The bundled WSDL (`src/client/wsdl/`) lets a real cassette replay in CI once
-    a fixture exists.
+    saved search exists to execute it against. The bundled WSDL (`src/client/wsdl/`) lets a real
+    cassette replay in CI once a fixture exists.
 - restlet: GET basic, POST with body, marker/cursor pagination (2 pages), non-2xx error surfaced
   with body (spec §4).
 - **Deferred variant:** async saved-search execution (spec §4) is left as a seam

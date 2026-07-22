@@ -16,7 +16,7 @@ def _row(**kw):
     return RecordRow(**base)
 
 
-def _extractor(row, records, since=None):
+def _extractor(row, records):
     """Build an extractor whose collection is ID-only and whose get_record returns full records.
 
     This mirrors NetSuite: the REST record collection returns ids + links only (spec §9 risk 5), so
@@ -26,44 +26,31 @@ def _extractor(row, records, since=None):
     client.iter_record_collection.return_value = iter([{"id": r.get("id")} for r in records])
     by_id = {str(r.get("id")): r for r in records}
     client.get_record.side_effect = lambda rt, rid, expand_sub_resources=True: by_id[str(rid)]
-    ext = RecordExtractor(
-        row=row,
-        rest_client=client,
-        since=since,
-        server_time_provider=lambda: "2024-05-01T00:00:00Z",
-    )
-    return ext, client
+    return RecordExtractor(row=row, rest_client=client), client
 
 
-def test_incremental_filter_added_to_q():
-    row = _row(load_type="incremental_load", incremental_field="lastModifiedDate", primary_key=["id"])
-    ext, client = _extractor(row, [{"id": "1"}], since="2024-01-01T00:00:00Z")
+def test_user_query_filter_forwarded_as_q():
+    row = _row(load_type="full_load", query_filter='email CONTAINS "x"', primary_key=["id"])
+    ext, client = _extractor(row, [{"id": "1"}])
     ext.extract()
     _, kwargs = client.iter_record_collection.call_args
-    assert 'lastModifiedDate ON_OR_AFTER "1/1/2024"' in kwargs["q"]
+    assert kwargs["q"] == 'email CONTAINS "x"'
 
 
-def test_user_query_filter_and_incremental_combined():
-    row = _row(
-        load_type="incremental_load",
-        incremental_field="lastModifiedDate",
-        query_filter='email CONTAINS "x"',
-        primary_key=["id"],
-    )
-    ext, client = _extractor(row, [{"id": "1"}], since="2024-01-01T00:00:00Z")
-    ext.extract()
-    _, kwargs = client.iter_record_collection.call_args
-    assert 'email CONTAINS "x"' in kwargs["q"]
-    assert "ON_OR_AFTER" in kwargs["q"]
-
-
-def test_full_load_has_no_incremental_filter():
+def test_no_query_filter_means_q_none():
     row = _row(load_type="full_load")
     ext, client = _extractor(row, [{"id": "1"}])
     result = ext.extract()
     _, kwargs = client.iter_record_collection.call_args
     assert kwargs["q"] is None
     assert result.tables[0].incremental is False
+
+
+def test_incremental_flag_reflected_on_table():
+    row = _row(load_type="incremental_load", primary_key=["id"])
+    ext, _ = _extractor(row, [{"id": "1"}])
+    result = ext.extract()
+    assert result.tables[0].incremental is True
 
 
 def test_per_id_get_with_expand_sub_resources_called():
@@ -185,32 +172,9 @@ def test_native_column_types_inferred_for_record_output():
     assert table.column_types["id"] == "string"
 
 
-def test_state_captured_from_server_time_before_fetch():
-    calls = []
-    client = mock.Mock()
-
-    def fake_iter(*a, **k):
-        calls.append("fetch")
-        return iter([{"id": "1"}])
-
-    client.iter_record_collection.side_effect = fake_iter
-    client.get_record.side_effect = lambda *a, **k: {"id": "1"}
-
-    def provider():
-        calls.append("server_time")
-        return "2024-05-01T00:00:00Z"
-
-    row = _row(load_type="incremental_load", primary_key=["id"])
-    ext = RecordExtractor(row=row, rest_client=client, since=None, server_time_provider=provider)
-    result = ext.extract()
-    # watermark must be read before the fetch begins
-    assert calls == ["server_time", "fetch"]
-    assert result.state == {"last_run": "2024-05-01T00:00:00Z"}
-
-
-def test_full_load_also_persists_watermark():
-    # NTH2: full loads persist the watermark so a later full->incremental switch resumes correctly.
+def test_no_state_produced():
+    # §4: no state watermark is produced anymore.
     row = _row(load_type="full_load")
     ext, _ = _extractor(row, [{"id": "1"}])
     result = ext.extract()
-    assert result.state == {"last_run": "2024-05-01T00:00:00Z"}
+    assert not hasattr(result, "state")

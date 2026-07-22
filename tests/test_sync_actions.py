@@ -37,11 +37,12 @@ def _component(tmp_path: Path, parameters: dict) -> Component:
         return Component()
 
 
-def test_all_six_actions_registered():
+def test_all_actions_registered():
     for name in (
         "testConnection",
         "listRecordTypes",
         "listFields",
+        "getColumns",
         "listSavedSearches",
         "validateSuiteQL",
         "previewRestlet",
@@ -85,6 +86,38 @@ def test_list_fields(tmp_path):
     with mock.patch.object(RestClient, "get_metadata_catalog", return_value=schema):
         result = comp.list_fields()
     assert {e.value for e in result} == {"id", "entityid"}
+
+
+def test_get_columns_record_mode_uses_metadata_fields(tmp_path):
+    comp = _component(tmp_path, {**CONNECTION, "mode": "record", "record_type": "customer"})
+    schema = {"properties": {"id": {}, "entityid": {}}}
+    with mock.patch.object(RestClient, "get_metadata_catalog", return_value=schema):
+        result = comp.get_columns()
+    assert {e.value for e in result} == {"id", "entityid"}
+
+
+def test_get_columns_suiteql_mode_probes_query(tmp_path):
+    comp = _component(tmp_path, {**CONNECTION, "mode": "suiteql", "query": "SELECT id, companyname FROM customer"})
+    with mock.patch.object(RestClient, "suiteql_page", return_value={"items": [{"id": "1", "companyname": "ACME"}]}):
+        result = comp.get_columns()
+    assert [e.value for e in result] == ["id", "companyname"]
+
+
+def test_get_columns_suiteql_probe_failure_returns_empty(tmp_path):
+    comp = _component(tmp_path, {**CONNECTION, "mode": "suiteql", "query": "SELECT bad"})
+    with mock.patch.object(RestClient, "suiteql_page", side_effect=UserException("400 syntax")):
+        result = comp.get_columns()
+    assert result == []
+
+
+def test_get_columns_saved_search_mode_returns_empty(tmp_path):
+    comp = _component(tmp_path, {**CONNECTION, "mode": "saved_search", "saved_search_id": "customsearch_x"})
+    assert comp.get_columns() == []
+
+
+def test_get_columns_record_without_record_type_returns_empty(tmp_path):
+    comp = _component(tmp_path, {**CONNECTION, "mode": "record", "record_type": ""})
+    assert comp.get_columns() == []
 
 
 def test_list_saved_searches(tmp_path):

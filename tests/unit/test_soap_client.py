@@ -102,17 +102,16 @@ def test_saved_search_request_builds_and_validates_offline():
     ``savedSearchId`` — the earlier ``SearchRequest(savedSearchId=...)`` shape was invalid (that type
     has no such field). zeep validates request objects against the schema at serialization time, so
     building + serializing the request against the bundled WSDL (offline, no network) catches exactly
-    that signature-mismatch class of bug.
+    that signature-mismatch class of bug. Filtering lives inside the saved search itself, so no
+    criteria are layered on.
     """
     client = _client()
     advanced = client._advanced_search_type("Transaction")
     record = advanced(savedSearchId="customsearch_example")
-    record.criteria = client._build_criteria("Transaction", "2024-01-01T00:00:00Z")
     node = client._client.create_message(client._client.service, "search", searchRecord=record)
     xml = etree.tostring(node, encoding="unicode")
     assert "customsearch_example" in xml  # savedSearchId serialized
     assert "SearchAdvanced" in xml  # the SearchAdvanced record type is used
-    assert "onOrAfter" in xml  # incremental lastModifiedDate criterion serialized
 
 
 def test_advanced_search_type_resolves_across_namespaces():

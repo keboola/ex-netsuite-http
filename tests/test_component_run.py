@@ -46,31 +46,41 @@ def _read_csv(data_dir: Path, name: str) -> list[dict]:
         return list(csv.DictReader(f))
 
 
-def _read_state(data_dir: Path) -> dict:
-    return json.loads((data_dir / "out" / "state.json").read_text())
-
-
 def test_suiteql_incremental_happy_path(tmp_path):
     params = {
         **CONNECTION,
         "mode": "suiteql",
-        "query": "SELECT id, name FROM customer WHERE lastmodifieddate > :state",
+        "query": "SELECT id, name FROM customer",
         "output_table_name": "customers",
         "primary_key": ["id"],
         "load_type": "incremental_load",
     }
-    data_dir = _make_datadir(tmp_path, params, state={"last_run": "2024-01-01T00:00:00Z"})
+    data_dir = _make_datadir(tmp_path, params)
     rows = [{"id": "1", "name": "ACME"}, {"id": "2", "name": "Globex"}]
-    with (
-        mock.patch.object(RestClient, "iter_suiteql", return_value=iter(rows)) as iter_mock,
-        mock.patch.object(RestClient, "server_time", return_value="2024-05-01T00:00:00Z"),
-    ):
+    with mock.patch.object(RestClient, "iter_suiteql", return_value=iter(rows)):
         _run(data_dir)
-    # incremental lower bound bound into the query
-    assert "2024-01-01T00:00:00Z" in iter_mock.call_args[0][0]
     out = _read_csv(data_dir, "customers")
     assert [r["id"] for r in out] == ["1", "2"]
-    assert _read_state(data_dir) == {"last_run": "2024-05-01T00:00:00Z"}
+    # §4: no state file is written anymore.
+    assert not (data_dir / "out" / "state.json").exists()
+
+
+def test_suiteql_date_range_substituted_into_query(tmp_path):
+    params = {
+        **CONNECTION,
+        "mode": "suiteql",
+        "query": "SELECT id FROM tx WHERE trandate BETWEEN :date_from AND :date_to",
+        "output_table_name": "tx",
+        "load_type": "full_load",
+        "date_from": "2024-01-01",
+        "date_to": "2024-03-01",
+    }
+    data_dir = _make_datadir(tmp_path, params)
+    with mock.patch.object(RestClient, "iter_suiteql", return_value=iter([{"id": "1"}])) as iter_mock:
+        _run(data_dir)
+    query = iter_mock.call_args[0][0]
+    assert ":date_from" not in query and ":date_to" not in query
+    assert "2024-01-01" in query and "2024-03-01" in query
 
 
 def test_record_flatten_happy_path(tmp_path):
@@ -87,13 +97,11 @@ def test_record_flatten_happy_path(tmp_path):
     with (
         mock.patch.object(RestClient, "iter_record_collection", return_value=iter([{"id": "1"}])),
         mock.patch.object(RestClient, "get_record", return_value={"id": "1", "entityid": "ACME"}),
-        mock.patch.object(RestClient, "server_time", return_value="2024-05-01T00:00:00Z"),
     ):
         _run(data_dir)
     out = _read_csv(data_dir, "customer")
     assert out[0]["entityid"] == "ACME"
-    # NTH2: even a full load persists the watermark for a later full->incremental switch.
-    assert _read_state(data_dir) == {"last_run": "2024-05-01T00:00:00Z"}
+    assert not (data_dir / "out" / "state.json").exists()
 
 
 def test_restlet_happy_path(tmp_path):
@@ -107,10 +115,7 @@ def test_restlet_happy_path(tmp_path):
         "load_type": "full_load",
     }
     data_dir = _make_datadir(tmp_path, params)
-    with (
-        mock.patch.object(RestletClient, "iter_records", return_value=iter([{"id": "9"}])),
-        mock.patch.object(RestClient, "server_time", return_value="2024-05-01T00:00:00Z"),
-    ):
+    with mock.patch.object(RestletClient, "iter_records", return_value=iter([{"id": "9"}])):
         _run(data_dir)
     out = _read_csv(data_dir, "restlet_out")
     assert out[0]["id"] == "9"
@@ -142,10 +147,7 @@ def test_zero_row_run_writes_header_only_table_and_manifest(tmp_path):
         "load_type": "full_load",
     }
     data_dir = _make_datadir(tmp_path, params)
-    with (
-        mock.patch.object(RestClient, "iter_suiteql", return_value=iter([])),
-        mock.patch.object(RestClient, "server_time", return_value="2024-05-01T00:00:00Z"),
-    ):
+    with mock.patch.object(RestClient, "iter_suiteql", return_value=iter([])):
         _run(data_dir)
     csv_path = data_dir / "out" / "tables" / "customers.csv"
     manifest_path = data_dir / "out" / "tables" / "customers.csv.manifest"
@@ -166,10 +168,7 @@ def test_manifest_written_with_schema(tmp_path):
         "load_type": "full_load",
     }
     data_dir = _make_datadir(tmp_path, params)
-    with (
-        mock.patch.object(RestClient, "iter_suiteql", return_value=iter([{"id": 1}])),
-        mock.patch.object(RestClient, "server_time", return_value="2024-05-01T00:00:00Z"),
-    ):
+    with mock.patch.object(RestClient, "iter_suiteql", return_value=iter([{"id": 1}])):
         _run(data_dir)
     manifest = json.loads((data_dir / "out" / "tables" / "customers.csv.manifest").read_text())
     assert manifest  # a manifest exists
