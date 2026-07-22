@@ -20,14 +20,15 @@ the component decides internally whether to call REST or SOAP:
 | Mode           | Interface            | What it does                                                                                          |
 |----------------|----------------------|-------------------------------------------------------------------------------------------------------|
 | `record`       | REST Record API      | Read a record type with optional field projection and a `q` filter; sublists flattened or split out.  |
-| `suiteql`      | REST SuiteQL         | Run an arbitrary SuiteQL query, with optional date windowing for large result sets.                   |
+| `suiteql`      | REST SuiteQL         | Run an arbitrary SuiteQL query, with an optional date range substituted into the query.               |
 | `saved_search` | SuiteTalk SOAP       | Execute an existing saved search (`customsearch_*`), paging with `searchMoreWithId`.                  |
 | `restlet`      | Custom RESTlet       | Call a deployed RESTlet (GET/POST/PUT/DELETE) and map rows from its JSON response.                    |
 
-Both full and incremental loads are supported. Incremental runs upsert on a configurable primary key
-using a watermark taken from NetSuite's own server clock (captured before the fetch, so a failed run
-keeps the previous watermark and is safely retried). Output manifests carry native column types
-(integer/numeric/boolean/string) inferred from the fetched data.
+Load Type is purely the Storage write mode: **full load** rewrites the whole table each run;
+**incremental load** upserts the fetched rows on the primary key (so rows not in the current batch
+are kept). There is no state-file watermark — bound the data you pull with the SuiteQL date range,
+the record `q` filter, or the saved search definition itself. Output manifests carry native column
+types (integer/numeric/boolean/string) inferred from the fetched data.
 
 Prerequisites — NetSuite Token-Based Authentication (TBA)
 =========================================================
@@ -80,9 +81,8 @@ Common fields (all modes):
 |----------------------|--------------------|-------------------------------------------------------------------------------------------|
 | `mode`               | `suiteql`          | `record` / `suiteql` / `saved_search` / `restlet`.                                        |
 | `output_table_name`  | derived from target| Destination Storage table name.                                                           |
-| `primary_key`        | `[]`               | Columns forming the primary key. **Required** for incremental (Storage upsert).           |
-| `load_type`          | `incremental_load` | `full_load` or `incremental_load`.                                                        |
-| `incremental_field`  | `lastmodifieddate` | Watermark column used for incremental filtering (shown only for incremental load).        |
+| `primary_key`        | `[]`               | Columns that uniquely identify a row. Load suggestions via **Load columns** or type any name. **Required** for incremental (Storage upsert). |
+| `load_type`          | `incremental_load` | `full_load` (rewrite the table) or `incremental_load` (upsert by primary key).            |
 
 Mode `record`:
 
@@ -90,24 +90,27 @@ Mode `record`:
 |--------------------|-----------|------------------------------------------------------------------------------------------|
 | `record_type`      | —         | NetSuite record type to extract (e.g. `customer`, `invoice`, `customrecord_*`).          |
 | `fields`           | `[]`      | Optional column projection; empty = all fields.                                          |
-| `query_filter`     | `""`      | Optional REST `q` filter expression (the incremental clause is AND-combined into it).    |
+| `query_filter`     | `""`      | Optional record filter using NetSuite's [`q` syntax](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_1545222128.html). |
 | `sublist_handling` | `flatten` | `flatten` (sublist → JSON column) or `child_table` (separate table keyed to parent id).  |
 
 Mode `suiteql`:
 
-| Field         | Default | Description                                                                                              |
-|---------------|---------|----------------------------------------------------------------------------------------------------------|
-| `query`       | —       | SuiteQL query. Use `:state` for the incremental lower bound.                                              |
-| `window_size` | `0`     | Days per date window (to stay under NetSuite's ~100k-row ceiling). `0` disables. When > 0 the query must contain `:window_start` and `:window_end` placeholders. |
+| Field       | Default | Description                                                                                              |
+|-------------|---------|----------------------------------------------------------------------------------------------------------|
+| `query`     | —       | SuiteQL query. Put `:date_from` / `:date_to` in the WHERE clause to use the date range below.            |
+| `date_from` | `""`    | Start of the date range (absolute `2024-01-01` or relative `5 days ago`), parsed with Keboola's dateparser and substituted into `:date_from`. Empty disables substitution. |
+| `date_to`   | `now`   | End of the date range (absolute or relative, e.g. `now`), substituted into `:date_to`.                   |
+
+A single range is issued as-is (no automatic chunking); narrow a range that would exceed NetSuite's
+~100k-row SuiteQL result ceiling.
 
 Mode `saved_search`:
 
 | Field                | Default       | Description                                                                                    |
 |----------------------|---------------|------------------------------------------------------------------------------------------------|
-| `saved_search_id`    | —             | Saved search to execute (`customsearch_*`).                                                    |
-| `search_record_type` | `Transaction` | The saved search's underlying record type — selects the SuiteTalk `SearchAdvanced` request type (e.g. `Transaction`, `Customer`, `Item`, `Contact`, `Employee`, `Vendor`). |
-| `page_size`          | `1000`        | SOAP result page size.                                                                          |
-| `extra_filters`      | `[]`          | Advanced; not applied server-side (embed such filters in the saved search itself).             |
+| `saved_search_id`    | —             | Saved search to execute (`customsearch_*`). Define any filters inside the saved search itself. |
+| `search_record_type` | `Transaction` | The saved search's underlying record type — selects the `SearchAdvanced` request type. Creatable: pick a standard type or type any value, including custom record types (`customrecord_*`). |
+| `page_size`          | `1000`        | Result page size.                                                                               |
 
 Mode `restlet`:
 
@@ -116,20 +119,23 @@ Mode `restlet`:
 | `script_id`               | —       | RESTlet script internal id.                                                    |
 | `deploy_id`               | —       | RESTlet deployment internal id.                                                |
 | `method`                  | `GET`   | `GET` / `POST` / `PUT` / `DELETE`.                                             |
-| `query_params`            | `{}`    | Optional query parameters sent to the RESTlet.                                 |
-| `request_body`            | `null`  | Optional JSON body (for POST/PUT).                                             |
+| `query_params`            | `""`    | Optional query parameters as a JSON object (e.g. `{"since": "2024-01-01"}`). Must be valid JSON. |
+| `request_body`            | `""`    | Optional JSON request body for POST/PUT. Must be valid JSON.                    |
 | `record_path`             | `""`    | Dotted path to the rows in the response (e.g. `data.results`). Empty = top level. |
 | `pagination_cursor_field` | `""`    | Optional response field holding the next-page cursor.                          |
 
 Sync actions
 ============
 
-Six UI actions call the real client so you can build a row interactively:
+Seven UI actions call the real client so you can build a row interactively:
 
 - **testConnection** — validates the TBA credentials and reachability (metadata-catalog ping).
 - **listRecordTypes** — record types from the metadata catalog (populates `record_type`).
 - **listFields** — fields for the chosen record type (populates `fields`).
-- **listSavedSearches** — saved searches via SOAP (populates `saved_search_id`).
+- **getColumns** — primary-key column suggestions for the creatable PK picker: record fields
+  (record mode) or the columns a SuiteQL query returns (probed with a single row). Saved search /
+  RESTlet columns are not knowable ahead of a run, so the picker is type-your-own there.
+- **listSavedSearches** — saved searches (populates `saved_search_id`).
 - **validateSuiteQL** — dry-runs the query (`LIMIT`ed) and reports errors.
 - **previewRestlet** — makes a single RESTlet call and returns a sampled response.
 

@@ -16,11 +16,12 @@
     "#token_id": "REPLACE_WITH_TOKEN_ID",
     "#token_secret": "REPLACE_WITH_TOKEN_SECRET",
     "mode": "suiteql",
-    "query": "SELECT id, entityid, lastmodifieddate FROM customer WHERE lastmodifieddate > :state ORDER BY lastmodifieddate",
+    "query": "SELECT id, entityid, lastmodifieddate FROM customer WHERE lastmodifieddate BETWEEN :date_from AND :date_to ORDER BY lastmodifieddate",
+    "date_from": "30 days ago",
+    "date_to": "now",
     "output_table_name": "customers",
     "primary_key": ["id"],
-    "load_type": "incremental_load",
-    "incremental_field": "lastmodifieddate"
+    "load_type": "incremental_load"
   },
   "action": "run"
 }
