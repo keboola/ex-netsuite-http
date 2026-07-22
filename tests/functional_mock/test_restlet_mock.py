@@ -8,7 +8,7 @@ extraction, error surfacing, output mapping, state) against synthetic HTTP respo
 faked; all component code runs for real.
 
 To record REAL cassettes later: deploy a RESTlet in the sandbox, then run
-``scratchpad/record_cassettes.py`` with a restlet config.
+``scripts/record_cassettes.py`` with a restlet config.
 """
 
 import json

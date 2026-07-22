@@ -17,7 +17,7 @@ Async saved-search execution is a spec §4 deferred variant (SavedSearchExtracto
 is intentionally NOT mocked here.
 
 To record REAL cassettes later: create a `customsearch_*` saved search in the sandbox, then run
-``scratchpad/record_cassettes.py`` with a saved_search config (the bundled WSDL already lets the SOAP
+``scripts/record_cassettes.py`` with a saved_search config (the bundled WSDL already lets the SOAP
 client build offline for replay).
 """
 

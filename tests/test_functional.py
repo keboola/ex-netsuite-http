@@ -1,7 +1,7 @@
 """Functional (VCR) tests for the NetSuite HTTP extractor.
 
 Each case under ``tests/functional/`` is a recorded cassette replayed with no network access
-(``keboola.datadirtest``). Cassettes are recorded with ``scratchpad/record_cassettes.py`` against
+(``keboola.datadirtest``). Cassettes are recorded with ``scripts/record_cassettes.py`` against
 the verified sandbox and sanitized by the ``VCR_SANITIZERS`` declared in ``src/component.py``.
 """
 
