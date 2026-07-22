@@ -47,6 +47,25 @@ def test_iter_records_top_level_list():
 
 
 @responses.activate
+def test_scalar_at_record_path_raises_user_exception():
+    # record_path resolving to a scalar (not a record or list of records) must fail fast with a
+    # clear UserException, not yield a non-dict row that crashes the CSV writer downstream.
+    responses.add(responses.GET, RESTLET_URL, json={"data": {"results": "oops"}}, status=200)
+    client = _client()
+    with pytest.raises(UserException) as exc:
+        list(client.iter_records("123", "1", record_path="data.results"))
+    assert "data.results" in str(exc.value)
+
+
+@responses.activate
+def test_list_of_scalars_at_record_path_raises_user_exception():
+    responses.add(responses.GET, RESTLET_URL, json={"rows": [1, 2, 3]}, status=200)
+    client = _client()
+    with pytest.raises(UserException):
+        list(client.iter_records("123", "1", record_path="rows"))
+
+
+@responses.activate
 def test_cursor_pagination_loops_until_cursor_absent():
     responses.add(
         responses.GET,

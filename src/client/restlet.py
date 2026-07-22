@@ -9,6 +9,8 @@ the signed-request/retry transport with the REST client (see :mod:`client.http_b
 from collections.abc import Iterator
 from typing import Any
 
+from keboola.component.exceptions import UserException
+
 from client.http_base import SignedHttpClient
 
 _RESTLET_PATH = "/app/site/hosting/restlet.nl"
@@ -61,9 +63,18 @@ class RestletClient(SignedHttpClient):
         rows = RestletClient._extract_value(payload, record_path) if record_path else payload
         if rows is None:
             return []
-        if isinstance(rows, list):
+        # A single record (dict) is wrapped into a one-row list. Anything else — a scalar, or a list
+        # containing non-dict elements — cannot become CSV rows, so fail fast with a clear message
+        # instead of yielding a value the writer would choke on later.
+        if isinstance(rows, dict):
+            return [rows]
+        if isinstance(rows, list) and all(isinstance(item, dict) for item in rows):
             return rows
-        return [rows]
+        location = f"record_path '{record_path}'" if record_path else "the top level of the response"
+        raise UserException(
+            f"RESTlet response at {location} is not a record or list of records "
+            f"(got {type(rows).__name__}). Point record_path at the array (or object) of records."
+        )
 
     @staticmethod
     def _extract_value(payload: Any, dotted_path: str) -> Any:
