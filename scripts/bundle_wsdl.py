@@ -5,7 +5,7 @@ in it is the generic ``webservices.netsuite.com`` address, which the client over
 runtime). Its imports are RELATIVE paths, so mirroring the tree preserving the URL path layout means
 zeep resolves every import from the local files with no rewriting. Public docs, no auth needed.
 
-    uv run python scratchpad/bundle_wsdl.py
+    uv run python scripts/bundle_wsdl.py
 """
 
 import sys

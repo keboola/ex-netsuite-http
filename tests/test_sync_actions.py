@@ -103,6 +103,19 @@ def test_get_columns_suiteql_mode_probes_query(tmp_path):
     assert [e.value for e in result] == ["id", "companyname"]
 
 
+def test_get_columns_suiteql_substitutes_date_placeholders_before_probe(tmp_path):
+    # A date-filtered query must not reach NetSuite with unbound :date_from/:date_to (it would 400
+    # and yield no suggestions); the probe substitutes dummy literals first.
+    query = "SELECT id FROM tx WHERE trandate BETWEEN :date_from AND :date_to"
+    comp = _component(tmp_path, {**CONNECTION, "mode": "suiteql", "query": query})
+    with mock.patch.object(RestClient, "suiteql_page", return_value={"items": [{"id": "1"}]}) as probe:
+        result = comp.get_columns()
+    probed_query = probe.call_args.args[0]
+    assert ":date_from" not in probed_query and ":date_to" not in probed_query
+    assert "TO_TIMESTAMP" in probed_query
+    assert [e.value for e in result] == ["id"]
+
+
 def test_get_columns_suiteql_probe_failure_returns_empty(tmp_path):
     comp = _component(tmp_path, {**CONNECTION, "mode": "suiteql", "query": "SELECT bad"})
     with mock.patch.object(RestClient, "suiteql_page", side_effect=UserException("400 syntax")):

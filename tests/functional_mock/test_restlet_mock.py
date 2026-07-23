@@ -3,9 +3,10 @@
 NOT live recordings. No RESTlet was deployed in the sandbox and the credentials could not deploy one,
 so these tests stand in for live VCR cassettes. They drive the REAL ``RestletClient`` +
 ``RestletExtractor`` end-to-end (request construction, cursor-pagination loop, record_path
-extraction, error surfacing, output mapping, state) against synthetic HTTP responses served by the
+extraction, error surfacing, output mapping) against synthetic HTTP responses served by the
 ``responses`` library from the JSON fixtures in ``fixtures/restlet_*.json``. Only the network is
-faked; all component code runs for real.
+faked; all component code runs for real. (The extractor carries no state — Load Type is purely the
+Storage write mode — so there is no state to assert.)
 
 To record REAL cassettes later: deploy a RESTlet in the sandbox, then run
 ``scripts/record_cassettes.py`` with a restlet config.

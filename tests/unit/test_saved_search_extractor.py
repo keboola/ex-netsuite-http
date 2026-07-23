@@ -1,7 +1,9 @@
 """Unit tests for the saved-search extractor's paging/mapping (mocked SOAP client).
 
-Full SOAP behaviour is VCR-covered later; here we lock the searchMoreWithId paging loop and record
-mapping with lightweight fake result objects."""
+saved_search has no live round-trip coverage: no RESTlet/SOAP sandbox fixture was available, so the
+SOAP request shape is validated offline against the bundled WSDL and the paging/mapping logic is
+exercised here with lightweight fake result objects. These tests lock the searchMoreWithId paging
+loop and record mapping; they do not prove behaviour against a live NetSuite endpoint."""
 
 from types import SimpleNamespace
 from typing import Any

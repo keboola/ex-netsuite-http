@@ -22,6 +22,7 @@ from client.rest import RestClient
 from client.restlet import RestletClient
 from client.soap import SoapClient
 from configuration import Configuration, RecordRow, RestletRow, SuiteQLRow
+from extractor.suiteql import substitute_probe_dates
 
 
 class SyncActionsMixin:
@@ -134,12 +135,13 @@ class SyncActionsMixin:
     def _probe_suiteql_columns(self, row: SuiteQLRow) -> list[str]:
         """Best-effort column list for a SuiteQL query: fetch one row and read its keys.
 
-        The SuiteQL response carries no schema, so columns are only knowable from a returned row. Any
-        failure (bad SQL, unbound date placeholders, zero rows) yields no suggestions rather than an
-        error — the picker is creatable, so the user can always type the key columns manually.
+        The SuiteQL response carries no schema, so columns are only knowable from a returned row. The
+        ``:date_from`` / ``:date_to`` placeholders are substituted with a dummy literal first so a
+        date-filtered query still parses. Any failure (bad SQL, zero rows) yields no suggestions
+        rather than an error — the picker is creatable, so the user can always type the columns.
         """
         try:
-            payload = self._rest_client().suiteql_page(row.query, limit=1)
+            payload = self._rest_client().suiteql_page(substitute_probe_dates(row.query), limit=1)
         except Exception as exc:  # noqa: BLE001 — suggestion helper must never hard-fail the picker
             logging.info("getColumns SuiteQL probe failed (%s); returning no suggestions.", type(exc).__name__)
             return []

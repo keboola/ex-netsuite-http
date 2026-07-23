@@ -31,6 +31,17 @@ def _ts(dt: datetime) -> str:
     return f"TO_TIMESTAMP('{dt.strftime('%Y-%m-%dT%H:%M:%SZ')}', '{_TS_MASK}')"
 
 
+def substitute_probe_dates(query: str) -> str:
+    """Replace the ``:date_from`` / ``:date_to`` placeholders with a fixed dummy literal.
+
+    Used by the ``getColumns`` column probe, which only needs the query to parse and return one row
+    so it can read the column names — the actual date values are irrelevant. Without this a
+    date-filtered query would 400 on the unbound placeholders and yield no column suggestions.
+    """
+    dummy = _ts(datetime(1970, 1, 1))
+    return query.replace(_DATE_FROM, dummy).replace(_DATE_TO, dummy)
+
+
 class SuiteQLExtractor(Extractor):
     def __init__(self, row: SuiteQLRow, rest_client: RestClient):
         self.row = row
