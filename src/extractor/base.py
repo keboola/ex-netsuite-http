@@ -10,8 +10,9 @@ PK upsert). "Recent data" is bounded by the SuiteQL date range, the record ``q``
 saved search itself — not by a persisted cursor.
 """
 
+import itertools
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -76,3 +77,24 @@ def infer_column_types(rows: Iterable[dict[str, Any]]) -> dict[str, str]:
             if key not in types and value is not None and not isinstance(value, (dict, list)):
                 types[key] = infer_base_type(value)
     return types
+
+
+def resolve_stream_schema(
+    rows: Iterable[dict[str, Any]],
+) -> tuple[Iterator[dict[str, Any]], list[str] | None, dict[str, str] | None]:
+    """Peek the first row to resolve the column set + native types, keeping the result streamable.
+
+    Large pulls (a ~100k SuiteQL result) must never be fully materialized in memory. The writer
+    needs the column set up front for the CSV header/manifest, so we peek only the first row for the
+    columns and per-column base types, then return a stream that re-yields that first row followed by
+    the rest — consumed lazily, one page/row at a time, by the CSV writer. An empty result yields an
+    empty stream and no schema (the writer then falls back to the configured primary key).
+    """
+    iterator = iter(rows)
+    try:
+        first = next(iterator)
+    except StopIteration:
+        return iter(()), None, None
+    stream = itertools.chain((first,), iterator)
+    sample = [first]
+    return stream, (collect_columns(sample) or None), (infer_column_types(sample) or None)

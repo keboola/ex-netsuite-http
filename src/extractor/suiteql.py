@@ -9,14 +9,14 @@ row ceiling should be narrowed. Typed columns are inferred for the native-types 
 
 import logging
 from datetime import datetime
-from typing import Any, cast
+from typing import cast
 
 from keboola.component.exceptions import UserException
 from keboola.utils import parse_datetime_interval
 
 from client.rest import RestClient
 from configuration import SuiteQLRow
-from extractor.base import ExtractionResult, Extractor, OutputTable, infer_base_type
+from extractor.base import ExtractionResult, Extractor, OutputTable, resolve_stream_schema
 
 _DATE_FROM = ":date_from"
 _DATE_TO = ":date_to"
@@ -48,23 +48,22 @@ class SuiteQLExtractor(Extractor):
         self.rest_client = rest_client
 
     def extract(self) -> ExtractionResult:
-        rows = self._fetch_rows()
-        table = OutputTable(
-            name=self.row.output_table_name or "suiteql_result",
-            rows=rows,
-            primary_key=self.row.primary_key,
-            incremental=self.row.incremental,
-            columns=self._columns(rows),
-            column_types=self._infer_types(rows),
-        )
-        return ExtractionResult(tables=[table])
-
-    # ---- fetch -----------------------------------------------------------
-
-    def _fetch_rows(self) -> list[dict[str, Any]]:
         query = self._bind_dates(self.row.query)
         logging.info("Running SuiteQL query")
-        return list(self.rest_client.iter_suiteql(query, limit=self.row.page_limit))
+        # Stream the paged result straight to the writer instead of materializing it (a ~100k-row
+        # pull would OOM); the column set + native types are resolved from the first row only.
+        stream, columns, column_types = resolve_stream_schema(
+            self.rest_client.iter_suiteql(query, limit=self.row.page_limit)
+        )
+        table = OutputTable(
+            name=self.row.output_table_name or "suiteql_result",
+            rows=stream,
+            primary_key=self.row.primary_key,
+            incremental=self.row.incremental,
+            columns=columns,
+            column_types=column_types,
+        )
+        return ExtractionResult(tables=[table])
 
     def _bind_dates(self, query: str) -> str:
         """Substitute the parsed date range into the ':date_from' / ':date_to' placeholders.
@@ -86,27 +85,3 @@ class SuiteQLExtractor(Extractor):
                 "string dateparser understands (e.g. '5 days ago', 'now')."
             ) from exc
         return query.replace(_DATE_FROM, _ts(start)).replace(_DATE_TO, _ts(end))
-
-    # ---- typing ----------------------------------------------------------
-
-    @staticmethod
-    def _columns(rows: list[dict[str, Any]]) -> list[str] | None:
-        if not rows:
-            return None
-        columns: list[str] = []
-        for row in rows:
-            for key in row:
-                if key not in columns:
-                    columns.append(key)
-        return columns
-
-    @staticmethod
-    def _infer_types(rows: list[dict[str, Any]]) -> dict[str, str] | None:
-        if not rows:
-            return None
-        types: dict[str, str] = {}
-        for row in rows:
-            for key, value in row.items():
-                if key not in types and value is not None:
-                    types[key] = infer_base_type(value)
-        return types

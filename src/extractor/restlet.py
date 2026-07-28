@@ -13,8 +13,7 @@ from extractor.base import (
     ExtractionResult,
     Extractor,
     OutputTable,
-    collect_columns,
-    infer_column_types,
+    resolve_stream_schema,
 )
 
 
@@ -28,10 +27,9 @@ class RestletExtractor(Extractor):
         body = self.row.parsed_request_body()
 
         logging.info("Calling RESTlet script=%s deploy=%s", self.row.script_id, self.row.deploy_id)
-        # Materialize the paged RESTlet rows so the output manifest carries native column types
-        # (inferred from the fetched rows, as the SuiteQL extractor does). RESTlet result sets are
-        # bounded by what the customer's script returns per configured pagination.
-        rows = list(
+        # Stream the paged RESTlet rows straight to the writer instead of materializing them; the
+        # output manifest still carries native column types, resolved from the first row.
+        stream, columns, column_types = resolve_stream_schema(
             self.restlet_client.iter_records(
                 self.row.script_id,
                 self.row.deploy_id,
@@ -45,10 +43,10 @@ class RestletExtractor(Extractor):
 
         table = OutputTable(
             name=self.row.output_table_name or f"restlet_{self.row.script_id}",
-            rows=rows,
+            rows=stream,
             primary_key=self.row.primary_key,
             incremental=self.row.incremental,
-            columns=collect_columns(rows) or None,
-            column_types=infer_column_types(rows) or None,
+            columns=columns,
+            column_types=column_types,
         )
         return ExtractionResult(tables=[table])

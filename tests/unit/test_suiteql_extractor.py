@@ -80,6 +80,33 @@ def test_no_state_produced():
     assert not hasattr(result, "state")
 
 
+def test_rows_streamed_not_materialized():
+    # F1: extract() must NOT drain the client generator (a ~100k-row pull would OOM). It peeks only
+    # the first row to resolve the schema and streams the rest lazily to the writer.
+    consumed: list[int] = []
+
+    def infinite():
+        i = 0
+        while True:
+            consumed.append(i)
+            yield {"id": i}
+            i += 1
+
+    client = mock.Mock()
+    client.iter_suiteql.return_value = infinite()
+    ext = SuiteQLExtractor(row=_row(load_type="full_load"), rest_client=client)
+
+    result = ext.extract()
+    # Only the first row was pulled to resolve columns; the generator is not drained.
+    assert consumed == [0]
+    table = result.tables[0]
+    assert table.columns == ["id"]
+
+    stream = iter(table.rows)
+    first_three = [next(stream) for _ in range(3)]
+    assert [r["id"] for r in first_three] == [0, 1, 2]
+
+
 def test_typed_columns_inferred():
     row = _row(load_type="full_load")
     ext, _ = _extractor(row, [[{"id": 1, "name": "ACME", "balance": 10.5, "active": True}]])

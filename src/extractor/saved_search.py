@@ -10,6 +10,7 @@ and no date watermark). Deferred variant (spec §4): async execution for very la
 """
 
 import logging
+from collections.abc import Iterator
 from typing import Any
 
 from client.soap import SoapClient
@@ -18,8 +19,7 @@ from extractor.base import (
     ExtractionResult,
     Extractor,
     OutputTable,
-    collect_columns,
-    infer_column_types,
+    resolve_stream_schema,
 )
 
 
@@ -30,28 +30,30 @@ class SavedSearchExtractor(Extractor):
 
     def extract(self) -> ExtractionResult:
         logging.info("Executing saved search '%s'", self.row.saved_search_id)
-        rows = self._fetch_rows()
+        # Stream the SOAP result page by page (one page in memory at a time) instead of accumulating
+        # every record into a list; columns + native types are resolved from the first row.
+        stream, columns, column_types = resolve_stream_schema(self._iter_rows())
 
         table = OutputTable(
             name=self.row.output_table_name or self.row.saved_search_id or "saved_search",
-            rows=rows,
+            rows=stream,
             primary_key=self.row.primary_key,
             incremental=self.row.incremental,
-            columns=collect_columns(rows) or None,
-            column_types=infer_column_types(rows) or None,
+            columns=columns,
+            column_types=column_types,
         )
         return ExtractionResult(tables=[table])
 
     # ---- fetch + paging --------------------------------------------------
 
-    def _fetch_rows(self) -> list[dict[str, Any]]:
+    def _iter_rows(self) -> Iterator[dict[str, Any]]:
         raw = self.soap_client.run_saved_search(
             self.row.saved_search_id,
             search_record_type=self.row.search_record_type,
             page_size=self.row.page_size,
         )
         result = self._search_result(raw)
-        rows = [self._to_dict(r) for r in self._records(result)]
+        yield from (self._to_dict(r) for r in self._records(result))
 
         total_pages = int(getattr(result, "totalPages", 1) or 1)
         search_id = getattr(result, "searchId", None)
@@ -59,8 +61,7 @@ class SavedSearchExtractor(Extractor):
         while search_id and page_index < total_pages:
             page_index += 1
             more = self._search_result(self.soap_client.search_more_with_id(search_id, page_index))
-            rows.extend(self._to_dict(r) for r in self._records(more))
-        return rows
+            yield from (self._to_dict(r) for r in self._records(more))
 
     # ---- SOAP result mapping --------------------------------------------
 
