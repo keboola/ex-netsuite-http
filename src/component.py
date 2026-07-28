@@ -8,8 +8,11 @@ the row's mode → run it → write the output tables and manifests. All HTTP/SO
 import csv
 import json
 import logging
+import os
 import re
+import sys
 from collections import OrderedDict
+from pathlib import Path
 from typing import Any
 
 from keboola.component.base import ComponentBase
@@ -243,13 +246,38 @@ class Component(SyncActionsMixin, ComponentBase):
         return value
 
 
-if __name__ == "__main__":
+def _configured_action() -> str:
+    """Read the configured action from config.json (defaults to 'run').
+
+    Needed in ``main()`` because ``Configuration(**params)`` runs in ``Component.__init__`` — outside
+    the ``@sync_action`` wrapper's try/except — so a construction failure (e.g. missing credentials)
+    during a sync action never reaches that wrapper's clean stderr handling.
+    """
+    data_dir = os.environ.get("KBC_DATADIR", "/data")
+    try:
+        with open(Path(data_dir) / "config.json", encoding="utf-8") as config_file:
+            return json.load(config_file).get("action") or "run"
+    except OSError, ValueError:
+        return "run"
+
+
+def main() -> None:
     try:
         comp = Component()
         comp.execute_action()
     except UserException as exc:
+        # A sync action that fails during construction must surface a clean, single-line message to
+        # stderr and exit 1 (mirroring the @sync_action wrapper), NOT a logging.exception traceback —
+        # the UI renders the stderr text to the user.
+        if _configured_action() != "run":
+            sys.stderr.write(str(exc))
+            sys.exit(1)
         logging.exception(exc)
-        exit(1)
+        sys.exit(1)
     except Exception as exc:
         logging.exception(exc)
-        exit(2)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

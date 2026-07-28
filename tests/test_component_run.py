@@ -5,6 +5,7 @@ client methods the mode uses, runs the component, and asserts the output CSV, ma
 
 import csv
 import json
+import logging
 import os
 from pathlib import Path
 from unittest import mock
@@ -12,6 +13,7 @@ from unittest import mock
 import pytest
 from keboola.component.exceptions import UserException
 
+import component as component_module
 from client.rest import RestClient
 from client.restlet import RestletClient
 from component import Component
@@ -197,6 +199,38 @@ def test_zero_row_run_writes_header_only_table_and_manifest(tmp_path):
     lines = csv_path.read_text(encoding="utf-8").splitlines()
     assert lines == ["id"]
     assert _read_csv(data_dir, "customers") == []
+
+
+def test_sync_action_missing_credentials_exits_clean(tmp_path, capsys, caplog):
+    # F4: Configuration() runs in Component.__init__, outside the @sync_action wrapper, so a sync
+    # action invoked before credentials are filled must still exit 1 with a clean stderr message and
+    # NO logging.exception traceback.
+    data_dir = tmp_path / "data"
+    (data_dir / "in" / "tables").mkdir(parents=True)
+    (data_dir / "out" / "tables").mkdir(parents=True)
+    (data_dir / "config.json").write_text(json.dumps({"parameters": {"mode": "record"}, "action": "listRecordTypes"}))
+    (data_dir / "in" / "state.json").write_text("{}")
+    with mock.patch.dict(os.environ, {"KBC_DATADIR": str(data_dir)}):
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as se:
+                component_module.main()
+    assert se.value.code == 1
+    err = capsys.readouterr().err
+    assert "account_id" in err
+    # A clean message, not a traceback: logging.exception would emit an ERROR record with exc_info.
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+def test_run_action_missing_credentials_logs_and_exits_1(tmp_path, caplog):
+    # The run() path keeps its existing behavior: log the exception and exit 1.
+    params = {"mode": "suiteql", "query": "SELECT 1"}  # no credentials
+    data_dir = _make_datadir(tmp_path, params)
+    with mock.patch.dict(os.environ, {"KBC_DATADIR": str(data_dir)}):
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(SystemExit) as se:
+                component_module.main()
+    assert se.value.code == 1
+    assert [r for r in caplog.records if r.levelno >= logging.ERROR]
 
 
 def test_manifest_written_with_schema(tmp_path):
