@@ -36,7 +36,11 @@ class RecordExtractor(Extractor):
 
     def extract(self) -> ExtractionResult:
         q = self._build_q()
-        logging.info("Fetching record collection '%s' (q=%s)", self.row.record_type, q)
+        # The q filter is user free text (potential PII / log injection): keep it out of the INFO
+        # line and log it at DEBUG only, with newlines stripped so it cannot forge extra log lines.
+        logging.info("Fetching record collection '%s'", self.row.record_type)
+        if q:
+            logging.debug("Record filter q=%s", q.replace("\r", " ").replace("\n", " "))
         records = self._fetch_records(q)
 
         table_name = self.row.output_table_name or self.row.record_type
@@ -50,7 +54,8 @@ class RecordExtractor(Extractor):
     # ---- fetch -----------------------------------------------------------
 
     def _fetch_records(self, q: str | None) -> list[dict[str, Any]]:
-        """Fetch the full records (eagerly, so a fetch failure surfaces before state is written).
+        """Fetch the full records eagerly (no state exists post-overhaul; the eager fetch just
+        surfaces a fetch failure before any output table is written).
 
         The REST record collection is ID-only (spec §9 risk 5): it returns ids + HATEOAS links, not
         field values or sublists. So whenever field values or sublist data are wanted we GET each

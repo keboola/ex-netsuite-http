@@ -5,7 +5,7 @@
     {
       "level": "INFO",
       "logger": "root",
-      "message": "Fetching record collection 'customer' (q=id BETWEEN [2206, 2251])",
+      "message": "Fetching record collection 'customer'",
       "timestamp": "2026-07-22T16:01:03.287Z"
     },
     {
