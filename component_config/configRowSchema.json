@@ -95,7 +95,7 @@
         "dependencies": {
           "mode": "record"
         },
-        "tooltip": "How to handle record sublists (line items). **Flatten** stores each sublist as a JSON string column on the parent row. **Separate child table** writes each sublist to its own table keyed to the parent id."
+        "tooltip": "How to handle record sublists (line items). **Flatten** stores each sublist as a JSON string column on the parent row. **Separate child table** writes each sublist to its own table keyed to the parent id. When Separate child table is chosen, each child table's name tracks the NetSuite sublist name (`<output_table>_<sublistName>`)."
       },
       "default": "flatten",
       "propertyOrder": 13
@@ -194,6 +194,17 @@
       "default": "Transaction",
       "options": {
         "tags": true,
+        "enum_titles": [
+          "Transaction",
+          "Customer",
+          "Item",
+          "Contact",
+          "Employee",
+          "Vendor",
+          "Support Case",
+          "Task",
+          "Opportunity"
+        ],
         "dependencies": {
           "mode": "saved_search"
         },
@@ -325,6 +336,19 @@
         }
       },
       "propertyOrder": 47
+    },
+
+    "page_limit": {
+      "type": "integer",
+      "title": "Page Size",
+      "default": 1000,
+      "options": {
+        "dependencies": {
+          "mode": ["record", "suiteql"]
+        },
+        "tooltip": "The number of records fetched per API page. NetSuite's REST/SuiteQL surfaces cap this at 1000; higher values are capped to that maximum."
+      },
+      "propertyOrder": 50
     },
 
     "output_table_name": {
