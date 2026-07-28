@@ -184,6 +184,16 @@ class Component(SyncActionsMixin, ComponentBase):
             )
             return
 
+        # A primary key that names a column the extraction did not return would fail opaquely at
+        # Storage import; surface it here naming the missing and available columns (mirrors the
+        # incremental+PK guard in configuration.py).
+        missing = [pk for pk in table.primary_key if pk not in columns]
+        if missing:
+            raise UserException(
+                f"Table '{table.name}': primary key column(s) {missing} are not among the extracted "
+                f"columns {columns}. Set 'primary_key' to column(s) the extraction actually returns."
+            )
+
         table_def = self.create_out_table_definition(
             f"{table.name}.csv",
             primary_key=table.primary_key,

@@ -135,6 +135,46 @@ def test_missing_secret_raises_user_exception(tmp_path):
         _run(data_dir)
 
 
+def test_primary_key_not_in_columns_raises_user_exception(tmp_path):
+    # F3: a mistyped PK column (present in config but not in the extracted columns) must fail with a
+    # clear UserException naming the missing column, not surface opaquely at Storage import.
+    params = {
+        **CONNECTION,
+        "mode": "suiteql",
+        "query": "SELECT id, name FROM customer",
+        "output_table_name": "customers",
+        "primary_key": ["custmer_id"],  # typo: no such column
+        "load_type": "full_load",
+    }
+    data_dir = _make_datadir(tmp_path, params)
+    rows = [{"id": "1", "name": "ACME"}]
+    with mock.patch.object(RestClient, "iter_suiteql", return_value=iter(rows)):
+        with pytest.raises(UserException) as exc:
+            _run(data_dir)
+    message = str(exc.value)
+    assert "custmer_id" in message
+    assert "id" in message and "name" in message
+
+
+def test_multi_column_primary_key_marked_in_manifest(tmp_path):
+    # F12: a 2+ column user primary key on a main table must mark every PK column primary_key:true.
+    params = {
+        **CONNECTION,
+        "mode": "suiteql",
+        "query": "SELECT subsidiary, account, amount FROM budget",
+        "output_table_name": "budget",
+        "primary_key": ["subsidiary", "account"],
+        "load_type": "incremental_load",
+    }
+    data_dir = _make_datadir(tmp_path, params)
+    rows = [{"subsidiary": "1", "account": "4000", "amount": 10}]
+    with mock.patch.object(RestClient, "iter_suiteql", return_value=iter(rows)):
+        _run(data_dir)
+    manifest = json.loads((data_dir / "out" / "tables" / "budget.csv.manifest").read_text())
+    pk_cols = {col["name"] for col in manifest["schema"] if col.get("primary_key")}
+    assert pk_cols == {"subsidiary", "account"}
+
+
 def test_zero_row_run_writes_header_only_table_and_manifest(tmp_path):
     # T12: a 0-row run must still create the Storage table (header-only CSV + manifest) using the
     # configured primary key as the known schema, rather than silently skipping the table.
