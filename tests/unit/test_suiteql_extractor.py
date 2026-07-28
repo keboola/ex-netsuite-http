@@ -6,6 +6,7 @@ import pytest
 from keboola.component.exceptions import UserException
 
 from configuration import SuiteQLRow
+from extractor.base import SCHEMA_SAMPLE_SIZE
 from extractor.suiteql import SuiteQLExtractor
 
 
@@ -81,8 +82,9 @@ def test_no_state_produced():
 
 
 def test_rows_streamed_not_materialized():
-    # F1: extract() must NOT drain the client generator (a ~100k-row pull would OOM). It peeks only
-    # the first row to resolve the schema and streams the rest lazily to the writer.
+    # F1: extract() must NOT drain the client generator (a ~100k-row pull would OOM). It samples a
+    # bounded head (SCHEMA_SAMPLE_SIZE rows) to resolve the schema and streams the rest lazily. The
+    # infinite generator proves it never drains to exhaustion.
     consumed: list[int] = []
 
     def infinite():
@@ -97,8 +99,8 @@ def test_rows_streamed_not_materialized():
     ext = SuiteQLExtractor(row=_row(load_type="full_load"), rest_client=client)
 
     result = ext.extract()
-    # Only the first row was pulled to resolve columns; the generator is not drained.
-    assert consumed == [0]
+    # Only the bounded head was pulled to resolve columns; the generator is not drained to exhaustion.
+    assert len(consumed) == SCHEMA_SAMPLE_SIZE
     table = result.tables[0]
     assert table.columns == ["id"]
 

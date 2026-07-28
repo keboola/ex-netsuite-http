@@ -16,6 +16,11 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
+# Rows peeked to resolve the column union + native types before streaming the rest. Sized to about
+# one page so NetSuite's per-row null-key omission doesn't drop a column that is simply null in the
+# first row, while keeping memory bounded (never the whole ~100k result).
+SCHEMA_SAMPLE_SIZE = 1000
+
 
 @dataclass
 class OutputTable:
@@ -82,19 +87,23 @@ def infer_column_types(rows: Iterable[dict[str, Any]]) -> dict[str, str]:
 def resolve_stream_schema(
     rows: Iterable[dict[str, Any]],
 ) -> tuple[Iterator[dict[str, Any]], list[str] | None, dict[str, str] | None]:
-    """Peek the first row to resolve the column set + native types, keeping the result streamable.
+    """Peek a bounded head of the stream to resolve the column union + native types, streamably.
 
-    Large pulls (a ~100k SuiteQL result) must never be fully materialized in memory. The writer
-    needs the column set up front for the CSV header/manifest, so we peek only the first row for the
-    columns and per-column base types, then return a stream that re-yields that first row followed by
-    the rest — consumed lazily, one page/row at a time, by the CSV writer. An empty result yields an
-    empty stream and no schema (the writer then falls back to the configured primary key).
+    Large pulls (a ~100k SuiteQL result) must never be fully materialized in memory, but the writer
+    needs the column set up front for the CSV header/manifest. NetSuite omits null-valued keys per
+    row, so peeking a single row would drop any column that is null in that row — silent data loss on
+    ragged data (the common case). We therefore buffer up to ``SCHEMA_SAMPLE_SIZE`` rows (about one
+    page) to build the column union + per-column base types, then re-yield that buffer followed by the
+    rest of the stream — consumed lazily by the CSV writer. Memory is bounded to the sample, not the
+    whole result. An empty result yields an empty stream and no schema (the writer then falls back to
+    the configured primary key).
+
+    Residual: a column that is null across the entire sampled head but populated only later is still
+    dropped; ``SCHEMA_SAMPLE_SIZE`` is sized to a full page to make that vanishingly unlikely.
     """
     iterator = iter(rows)
-    try:
-        first = next(iterator)
-    except StopIteration:
+    head = list(itertools.islice(iterator, SCHEMA_SAMPLE_SIZE))
+    if not head:
         return iter(()), None, None
-    stream = itertools.chain((first,), iterator)
-    sample = [first]
-    return stream, (collect_columns(sample) or None), (infer_column_types(sample) or None)
+    stream = itertools.chain(head, iterator)
+    return stream, (collect_columns(head) or None), (infer_column_types(head) or None)
