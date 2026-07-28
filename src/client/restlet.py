@@ -9,6 +9,7 @@ the signed-request/retry transport with the REST client (see :mod:`client.http_b
 from collections.abc import Iterator
 from typing import Any
 
+import requests
 from keboola.component.exceptions import UserException
 
 from client.http_base import SignedHttpClient
@@ -36,7 +37,15 @@ class RestletClient(SignedHttpClient):
         if query_params:
             params.update(query_params)
         response = self._signed_request(method.upper(), self._url, params=params, json_body=body, surface_body=True)
-        return response.json()
+        # A deployed RESTlet can return HTML (a gateway/maintenance page) or an empty body on a 2xx;
+        # an unguarded response.json() would then crash the job as an exit-2 system error instead of
+        # a user-facing message (mirrors rest._json).
+        try:
+            return response.json()
+        except (ValueError, requests.exceptions.JSONDecodeError) as exc:
+            raise UserException(
+                f"The RESTlet (script={script_id}, deploy={deploy_id}) returned a non-JSON response."
+            ) from exc
 
     def iter_records(
         self,

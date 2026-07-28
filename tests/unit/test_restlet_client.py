@@ -114,6 +114,35 @@ def test_error_response_surfaced_with_status_and_body():
 
 
 @responses.activate
+def test_non_json_response_raises_user_exception():
+    # F5: a 200 with a non-JSON body (e.g. an HTML maintenance page) must raise a clean UserException
+    # naming the script/deploy, not crash with a JSONDecodeError.
+    responses.add(
+        responses.GET,
+        RESTLET_URL,
+        body="<html>maintenance</html>",
+        status=200,
+        content_type="text/html",
+    )
+    client = _client()
+    with pytest.raises(UserException) as exc:
+        client.call("123", "1")
+    message = str(exc.value)
+    assert "non-JSON" in message
+    assert "script=123" in message and "deploy=1" in message
+
+
+@responses.activate
+def test_non_json_response_on_preview_path_raises_user_exception():
+    # F5: the previewRestlet path also goes through call(); a non-JSON 200 must surface cleanly.
+    responses.add(responses.POST, RESTLET_URL, body="not json", status=200, content_type="text/plain")
+    client = _client()
+    with pytest.raises(UserException) as exc:
+        client.call("123", "1", method="POST", body={"x": 1})
+    assert "non-JSON" in str(exc.value)
+
+
+@responses.activate
 def test_auth_error_surfaced():
     responses.add(responses.GET, RESTLET_URL, status=401, json={"error": "bad token"})
     client = _client()
