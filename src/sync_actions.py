@@ -73,7 +73,11 @@ class SyncActionsMixin:
         row = self.params.row
         if not isinstance(row, RecordRow) or not row.record_type:
             raise UserException("Select a record type first.")
-        record_type = row.record_type
+        return self._record_field_elements(row.record_type)
+
+    def _record_field_elements(self, record_type: str) -> list[SelectElement]:
+        """Return the record type's metadata fields as select elements (shared by listFields and the
+        getColumns record branch)."""
         schema = self._rest_client().get_metadata_catalog(record_type)
         properties = schema.get("properties", {}) or {}
         return [SelectElement(value=name, label=name) for name in properties]
@@ -89,9 +93,7 @@ class SyncActionsMixin:
         """
         row = self.params.row
         if isinstance(row, RecordRow) and row.record_type:
-            schema = self._rest_client().get_metadata_catalog(row.record_type)
-            properties = schema.get("properties", {}) or {}
-            return [SelectElement(value=name, label=name) for name in properties]
+            return self._record_field_elements(row.record_type)
         if isinstance(row, SuiteQLRow) and row.query:
             return [SelectElement(value=name, label=name) for name in self._probe_suiteql_columns(row)]
         return []
