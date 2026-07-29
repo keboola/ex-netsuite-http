@@ -4,7 +4,6 @@
   "tables": {
     "customer_paged.csv": {
       "columns": [
-        "links",
         "accountNumber",
         "addressBook",
         "alcoholRecipientType",
@@ -74,15 +73,15 @@
         "daysOverdue",
         "phone"
       ],
-      "hash": "sha256:1266792334393fafb0dcc73ed2c664cc26b1b23c29100bd9f643a72d1dba73a7",
+      "hash": "sha256:b5fac244053282c53e5e027df858eff4bb22b38e2d256e4bb60f41cbef5125a2",
       "row_count": 6,
-      "size_bytes": 41236
+      "size_bytes": 19262
     },
     "customer_paged.csv.manifest": {
       "columns": null,
-      "hash": "sha256:fd60f6c6b8bc1852af392c9b6577d3a3e852f560b5e6435e4f0b544957f12f29",
+      "hash": "sha256:1c6dbc49056e9c890434ec02178f7e561bfd27e22ec6a35e91b2ea566578c625",
       "row_count": null,
-      "size_bytes": 6571
+      "size_bytes": 10870
     }
   },
   "version": "1.0"

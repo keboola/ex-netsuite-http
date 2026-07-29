@@ -28,6 +28,25 @@ from extractor.base import (
 # Candidate per-line identifier columns used to form a child-table composite PK, in priority order.
 _CHILD_KEY_CANDIDATES = ("line", "lineuniquekey", "id", "key", "sequence", "seq")
 
+# Keys never emitted as output columns / child tables. ``links`` is the HATEOAS navigation array
+# NetSuite attaches to every record and sublist item — it is not user data.
+_RESERVED_KEYS = frozenset({"links"})
+
+
+def _strip_links(value: Any) -> Any:
+    """Recursively drop every reserved (``links``) key at any depth.
+
+    NetSuite attaches a HATEOAS ``links`` array not only to the top-level record but to every nested
+    sublist item and reference (``addressBook.items[i].links``, ``…country.links``, …). Stripping only
+    the top level would leave that navigation metadata in child-table columns and buried inside the
+    JSON-serialized sublist blobs in flatten mode, so we walk dicts and lists to remove it everywhere.
+    """
+    if isinstance(value, dict):
+        return {k: _strip_links(v) for k, v in value.items() if k not in _RESERVED_KEYS}
+    if isinstance(value, list):
+        return [_strip_links(v) for v in value]
+    return value
+
 
 class RecordExtractor(Extractor):
     def __init__(self, row: RecordRow, rest_client: RestClient):
@@ -57,18 +76,16 @@ class RecordExtractor(Extractor):
         """Fetch the full records eagerly (no state exists post-overhaul; the eager fetch just
         surfaces a fetch failure before any output table is written).
 
-        The REST record collection is ID-only (spec §9 risk 5): it returns ids + HATEOAS links, not
-        field values or sublists. So whenever field values or sublist data are wanted we GET each
-        record with ``expandSubResources`` (accepting the documented N+1 cost, spec §9 risk 5).
+        The REST record collection is ID-only (spec §9 risk 5): it returns ids + HATEOAS links, no
+        field values or sublists, and supports no server-side field projection. So every record is
+        GET'd individually with ``expandSubResources`` (accepting the documented N+1 cost, spec §9
+        risk 5); the Fields picker is then applied client-side (see ``_project``).
         """
         collection = self.rest_client.iter_record_collection(
             self.row.record_type,
             q=q,
-            fields=self.row.fields or None,
             limit=self.row.page_limit,
         )
-        if not self._needs_detail():
-            return list(collection)
         records: list[dict[str, Any]] = []
         for item in collection:
             record_id = item.get("id")
@@ -78,20 +95,30 @@ class RecordExtractor(Extractor):
             records.append(self.rest_client.get_record(self.row.record_type, str(record_id), expand_sub_resources=True))
         return records
 
-    def _needs_detail(self) -> bool:
-        # Record mode always needs more than the ID-only collection: either specific field values or
-        # sublist data (flatten/child_table). The per-id GET with expandSubResources supplies both.
-        return bool(self.row.fields) or self.row.sublist_handling in (
-            SublistHandling.flatten,
-            SublistHandling.child_table,
-        )
-
     # ---- filter ----------------------------------------------------------
 
     def _build_q(self) -> str | None:
         if not self.row.query_filter:
             return None
         return self.row.query_filter
+
+    # ---- fields projection -------------------------------------------------
+
+    def _project(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Shape a fetched record to the Fields picker (client-side; NetSuite's GET has no reliable
+        field projection). ``links`` (HATEOAS navigation) is always dropped. When ``fields`` is
+        empty, every remaining column passes through unchanged. When ``fields`` is set, only the
+        selected columns are kept, in the user's selected order, plus any ``primary_key`` columns so
+        the writer's PK-subset-of-columns check still holds.
+        """
+        stripped = _strip_links(record)
+        if not self.row.fields:
+            return stripped
+        projected = {key: stripped[key] for key in self.row.fields if key in stripped}
+        for key in self.row.primary_key:
+            if key not in projected and key in stripped:
+                projected[key] = stripped[key]
+        return projected
 
     # ---- sublist handling ------------------------------------------------
 
@@ -109,7 +136,7 @@ class RecordExtractor(Extractor):
     def _flatten_rows(self, records: Any):
         for record in records:
             row = {}
-            for key, value in record.items():
+            for key, value in self._project(record).items():
                 if self._is_sublist(value):
                     row[key] = json.dumps(self._sublist_items(value))
                 else:
@@ -120,11 +147,12 @@ class RecordExtractor(Extractor):
         # Child tables are streamed together, so materialize once and fan out.
         parent_rows: list[dict[str, Any]] = []
         child_rows: dict[str, list[dict[str, Any]]] = {}
+        fields = self.row.fields
         for record in records:
             parent = {}
             record_id = record.get("id")
-            for key, value in record.items():
-                if self._is_sublist(value):
+            for key, value in self._project(record).items():
+                if self._is_sublist(value) and (not fields or key in fields):
                     for item in self._sublist_items(value):
                         child_rows.setdefault(key, []).append({"_parent_id": record_id, **item})
                 else:

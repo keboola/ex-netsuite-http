@@ -178,3 +178,102 @@ def test_no_state_produced():
     ext, _ = _extractor(row, [{"id": "1"}])
     result = ext.extract()
     assert not hasattr(result, "state")
+
+
+# ---- Fields picker column shaping (finding #1) ------------------------------
+
+
+def test_fields_projection_restricts_columns_and_retains_pk():
+    # A selected Fields list must restrict emitted columns to that selection, in the selected
+    # order, while always keeping the primary key so the writer's PK-subset-of-columns check holds.
+    row = _row(load_type="full_load", fields=["entityid"], primary_key=["id"])
+    records = [{"id": "1", "entityid": "ACME", "balance": 100.0}]
+    ext, _ = _extractor(row, records)
+    rows = list(ext.extract().tables[0].rows)
+    assert list(rows[0].keys()) == ["entityid", "id"]
+    assert rows[0] == {"entityid": "ACME", "id": "1"}
+
+
+def test_empty_fields_emits_all_columns():
+    # No Fields selection means pass every column through unchanged (current/legacy behavior).
+    row = _row(load_type="full_load")
+    records = [{"id": "1", "entityid": "ACME", "balance": 100.0}]
+    ext, _ = _extractor(row, records)
+    rows = list(ext.extract().tables[0].rows)
+    assert rows[0] == {"id": "1", "entityid": "ACME", "balance": 100.0}
+
+
+def test_child_table_fields_filter_only_splits_selected_sublist():
+    # child_table + a Fields selection: only split a sublist whose key was selected; a sublist not
+    # in the selection (and not itself selected) must not appear anywhere in the output.
+    row = _row(
+        sublist_handling="child_table",
+        output_table_name="invoice",
+        load_type="full_load",
+        fields=["tranid", "item"],
+    )
+    records = [
+        {
+            "id": "10",
+            "tranid": "INV10",
+            "item": {"items": [{"line": 1}]},
+            "expense": {"items": [{"line": 1, "amount": 5}]},
+        }
+    ]
+    ext, _ = _extractor(row, records)
+    result = ext.extract()
+    assert {t.name for t in result.tables} == {"invoice", "invoice_item"}
+
+
+# ---- HATEOAS 'links' is reserved, never emitted (finding #2) ----------------
+
+
+def test_links_never_emitted_as_column_in_flatten():
+    row = _row(sublist_handling="flatten", load_type="full_load")
+    records = [{"id": "1", "entityid": "ACME", "links": [{"rel": "self", "href": "http://x"}]}]
+    ext, _ = _extractor(row, records)
+    rows = list(ext.extract().tables[0].rows)
+    assert "links" not in rows[0]
+
+
+def test_links_never_becomes_a_child_table():
+    row = _row(sublist_handling="child_table", output_table_name="customer", load_type="full_load")
+    records = [{"id": "1", "entityid": "ACME", "links": [{"rel": "self", "href": "http://x"}]}]
+    ext, _ = _extractor(row, records)
+    result = ext.extract()
+    tables = {t.name: t for t in result.tables}
+    assert set(tables) == {"customer"}
+    assert "links" not in list(tables["customer"].rows)[0]
+
+
+def test_nested_links_stripped_from_flatten_json_blob():
+    # NetSuite attaches a 'links' array to every sublist item too — recursive strip must remove it
+    # from inside the JSON-serialized sublist blob, not just the top-level record.
+    row = _row(sublist_handling="flatten", load_type="full_load")
+    records = [
+        {
+            "id": "1",
+            "entityid": "ACME",
+            "links": [{"rel": "self"}],
+            "addressBook": {"items": [{"line": 1, "links": [{"rel": "self"}]}]},
+        }
+    ]
+    ext, _ = _extractor(row, records)
+    rows = list(ext.extract().tables[0].rows)
+    assert "links" not in rows[0]
+    assert json.loads(rows[0]["addressBook"]) == [{"line": 1}]
+
+
+def test_nested_links_stripped_from_child_table_rows():
+    row = _row(sublist_handling="child_table", output_table_name="customer", load_type="full_load")
+    records = [
+        {
+            "id": "1",
+            "entityid": "ACME",
+            "addressBook": {"items": [{"line": 1, "links": [{"rel": "self"}]}]},
+        }
+    ]
+    ext, _ = _extractor(row, records)
+    tables = {t.name: t for t in ext.extract().tables}
+    child_rows = list(tables["customer_addressBook"].rows)
+    assert child_rows and all("links" not in r for r in child_rows)

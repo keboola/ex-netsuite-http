@@ -4,7 +4,6 @@
   "tables": {
     "customer_filtered.csv": {
       "columns": [
-        "links",
         "accountNumber",
         "addressBook",
         "alcoholRecipientType",
@@ -74,15 +73,15 @@
         "externalId",
         "phone"
       ],
-      "hash": "sha256:36a39b48efb18fd117ba144522d9a66a3f354baff2b4343291037f6c73306b9b",
+      "hash": "sha256:04b7e09d4b5e06accd0445bddf9b8c380058eebb6abcccaac21edc5c25d59795",
       "row_count": 3,
-      "size_bytes": 25682
+      "size_bytes": 12198
     },
     "customer_filtered.csv.manifest": {
       "columns": null,
-      "hash": "sha256:0ef7003a50c70e0d40fb605a30c59a47eb9524985fccb94e4a5203f70711102d",
+      "hash": "sha256:6c8599a2dcf7a4044cf407bb88731b468d8b846cf09d577934e802e04626d2a6",
       "row_count": null,
-      "size_bytes": 6571
+      "size_bytes": 10870
     }
   },
   "version": "1.0"

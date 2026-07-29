@@ -65,20 +65,19 @@
         "externalId",
         "phone"
       ],
-      "hash": "sha256:c85f5442b72901030e6b54b1a1b522dc5d6dd0a472b05e288b4c145bbe57ba56",
+      "hash": "sha256:8d4c0572d878336508324300903a117bdd08c7255eabb8442d0052e10c6e7ca7",
       "row_count": 3,
-      "size_bytes": 7044
+      "size_bytes": 3782
     },
     "customer_ct.csv.manifest": {
       "columns": null,
-      "hash": "sha256:baee040142d4afbf20fb735f6bdcf8441567ea74f5de90ca94d1a9cea390c1be",
+      "hash": "sha256:cffad90e488c4393c1a3cce03917329a2e2f01c037cd8e1901423d71e0fbb5a8",
       "row_count": null,
-      "size_bytes": 5777
+      "size_bytes": 9644
     },
     "customer_ct_addressBook.csv": {
       "columns": [
         "_parent_id",
-        "links",
         "addressBookAddress",
         "addressBookAddress_text",
         "addressId",
@@ -89,20 +88,19 @@
         "isResidential",
         "label"
       ],
-      "hash": "sha256:39f0b08bd51c92f0859a956f2e11dddd91099f57ccd1bc51adc51dd14439bc50",
+      "hash": "sha256:bbe89b5d898989ad0d061b356cb86ac20feff681473408f105a670b607715299",
       "row_count": 4,
-      "size_bytes": 2540
+      "size_bytes": 1458
     },
     "customer_ct_addressBook.csv.manifest": {
       "columns": null,
-      "hash": "sha256:20f5a7c7fb3f1b1440e7b79ea10a1f7e405bdd0250b77c39d31d67aedc9cc59d",
+      "hash": "sha256:dbb792bbf6a1ce532550b94dd64a5f3160d36a87601fa1ddef9eb037b40f8750",
       "row_count": null,
-      "size_bytes": 1134
+      "size_bytes": 1727
     },
     "customer_ct_currencyList.csv": {
       "columns": [
         "_parent_id",
-        "links",
         "balance",
         "currency",
         "depositBalance",
@@ -112,50 +110,32 @@
         "symbolPlacement",
         "unbilledOrders"
       ],
-      "hash": "sha256:d2e7fb4cc6e5814dafd903df30a97a969d7f5e8465619e38e0464f31294c519e",
+      "hash": "sha256:3972b8b36cc495734381830740c322e77a95b6b5c0e877a5d9a3f3d2ed5de2da",
       "row_count": 3,
-      "size_bytes": 1025
+      "size_bytes": 381
     },
     "customer_ct_currencyList.csv.manifest": {
       "columns": null,
-      "hash": "sha256:1fcf923193a64f0df277676b95206135593411ba82f3e853fc48df10a50d3d3d",
+      "hash": "sha256:8255e92dd695466cf322c9e1eb232ee578ffdd83ac394380dc4f656f10797402",
       "row_count": null,
-      "size_bytes": 1015
-    },
-    "customer_ct_links.csv": {
-      "columns": [
-        "_parent_id",
-        "rel",
-        "href",
-        "method"
-      ],
-      "hash": "sha256:f6cfcd6db0a412ff83abe5007b36bd7b374eb95766f303a777d3b1d9c5369226",
-      "row_count": 3,
-      "size_bytes": 268
-    },
-    "customer_ct_links.csv.manifest": {
-      "columns": null,
-      "hash": "sha256:60ef66f5da4371947bf9cb22280ccae5632e3cc0e81482d05bf7b834dea4dfc9",
-      "row_count": null,
-      "size_bytes": 461
+      "size_bytes": 1532
     },
     "customer_ct_taxRegistration.csv": {
       "columns": [
         "_parent_id",
-        "links",
         "id",
         "nexusCountry",
         "taxRegistrationNumber"
       ],
-      "hash": "sha256:aedb46b6f6b041d93b9f200ac09bae264bcba43af8d6099f47d1f11a07d61e3c",
+      "hash": "sha256:e75917920f98417a65c5e3cd7c01087e8db50fead475c1b8e45767720016615e",
       "row_count": 44,
-      "size_bytes": 11251
+      "size_bytes": 3553
     },
     "customer_ct_taxRegistration.csv.manifest": {
       "columns": null,
-      "hash": "sha256:221b17531c052573d874832e3b7e9c361b92fd6f0e8f6e2556ae2516891a75ee",
+      "hash": "sha256:0935afcf4480229af56bbd16a11551950ef5b27b2945ba0f6f5b2fd4221fa724",
       "row_count": null,
-      "size_bytes": 606
+      "size_bytes": 815
     }
   },
   "version": "1.0"

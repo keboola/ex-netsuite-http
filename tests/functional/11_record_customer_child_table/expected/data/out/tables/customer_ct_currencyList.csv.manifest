@@ -1,1 +1,91 @@
-{"incremental": false, "write_always": false, "delimiter": ",", "enclosure": "\"", "manifest_type": "out", "has_header": true, "schema": [{"name": "_parent_id", "data_type": {"base": {"type": "STRING"}}, "nullable": true}, {"name": "links", "data_type": {"base": {"type": "STRING"}}, "nullable": true}, {"name": "balance", "data_type": {"base": {"type": "NUMERIC"}}, "nullable": true}, {"name": "currency", "data_type": {"base": {"type": "STRING"}}, "nullable": true}, {"name": "depositBalance", "data_type": {"base": {"type": "NUMERIC"}}, "nullable": true}, {"name": "displaySymbol", "data_type": {"base": {"type": "STRING"}}, "nullable": true}, {"name": "overdueBalance", "data_type": {"base": {"type": "NUMERIC"}}, "nullable": true}, {"name": "overrideCurrencyFormat", "data_type": {"base": {"type": "BOOLEAN"}}, "nullable": true}, {"name": "symbolPlacement", "data_type": {"base": {"type": "STRING"}}, "nullable": true}, {"name": "unbilledOrders", "data_type": {"base": {"type": "NUMERIC"}}, "nullable": true}]}
+{
+  "incremental": false,
+  "write_always": false,
+  "delimiter": ",",
+  "enclosure": "\"",
+  "manifest_type": "out",
+  "has_header": true,
+  "schema": [
+    {
+      "name": "_parent_id",
+      "data_type": {
+        "base": {
+          "type": "STRING"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "balance",
+      "data_type": {
+        "base": {
+          "type": "NUMERIC"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "currency",
+      "data_type": {
+        "base": {
+          "type": "STRING"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "depositBalance",
+      "data_type": {
+        "base": {
+          "type": "NUMERIC"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "displaySymbol",
+      "data_type": {
+        "base": {
+          "type": "STRING"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "overdueBalance",
+      "data_type": {
+        "base": {
+          "type": "NUMERIC"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "overrideCurrencyFormat",
+      "data_type": {
+        "base": {
+          "type": "BOOLEAN"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "symbolPlacement",
+      "data_type": {
+        "base": {
+          "type": "STRING"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "unbilledOrders",
+      "data_type": {
+        "base": {
+          "type": "NUMERIC"
+        }
+      },
+      "nullable": true
+    }
+  ]
+}

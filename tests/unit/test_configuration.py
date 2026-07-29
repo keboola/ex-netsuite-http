@@ -250,3 +250,48 @@ def test_restlet_query_params_must_be_object():
     cfg = _cfg(mode="restlet", script_id="1", deploy_id="1", load_type="full_load", query_params="[1, 2, 3]")
     with pytest.raises(UserException, match="query_params"):
         cfg.validate_for_run()
+
+
+# ---- output_table_name is a bare slug (finding #4) --------------------------
+
+
+def test_output_table_name_with_path_separator_rejected():
+    with pytest.raises(UserException, match="output_table_name"):
+        _cfg(mode="record", record_type="customer", output_table_name="../evil")
+
+
+def test_output_table_name_with_backslash_rejected():
+    with pytest.raises(UserException, match="output_table_name"):
+        _cfg(mode="record", record_type="customer", output_table_name="a\\b")
+
+
+def test_output_table_name_valid_slug_passes():
+    cfg = _cfg(mode="record", record_type="customer", output_table_name="my_table-1.csv")
+    assert cfg.row.output_table_name == "my_table-1.csv"
+
+
+def test_output_table_name_empty_default_passes():
+    # Empty is the lenient sync-action default; only a supplied value is validated.
+    cfg = _cfg(mode="record")
+    assert cfg.row.output_table_name == ""
+
+
+# ---- no chained ValidationError cause in the raised UserException (finding #5) --
+
+
+def test_missing_secret_raises_user_exception_without_chained_cause():
+    # The chained ValidationError's str embeds a truncated 'input_value' of the merged params
+    # (including a prefix of the TBA secrets), which logging.exception would print. 'from None'
+    # must keep it out of __cause__.
+    data = {k: v for k, v in CONNECTION.items() if k != "#consumer_key"}
+    data["mode"] = "suiteql"
+    with pytest.raises(UserException) as exc_info:
+        Configuration(**data)
+    assert exc_info.value.__cause__ is None
+
+
+def test_run_validation_error_has_no_chained_cause():
+    cfg = _cfg(mode="record", load_type="full_load")  # no record_type
+    with pytest.raises(UserException) as exc_info:
+        cfg.validate_for_run()
+    assert exc_info.value.__cause__ is None

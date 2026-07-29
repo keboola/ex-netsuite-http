@@ -12,6 +12,7 @@ definition itself.
 """
 
 import json
+import re
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
@@ -24,6 +25,7 @@ from pydantic import (
     ValidationError,
     ValidationInfo,
     computed_field,
+    field_validator,
     model_validator,
 )
 
@@ -35,6 +37,12 @@ _RUNTIME_CONTEXT = {"runtime": True}
 # SuiteQL date placeholders substituted at run time from the parsed date range (see extractor.suiteql).
 _DATE_FROM_PLACEHOLDER = ":date_from"
 _DATE_TO_PLACEHOLDER = ":date_to"
+
+# Output table name pattern. The value becomes ``<output_table_name>.csv`` under ``data/out/tables``
+# (and child tables splice an API-supplied sublist name onto it), so it must be a bare filesystem-safe
+# slug — letters, digits, underscores, hyphens, dots — with no path separator or '..', so a crafted
+# name cannot escape the output directory.
+_SAFE_TABLE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 def _is_runtime(info: ValidationInfo) -> bool:
@@ -106,6 +114,19 @@ class BaseRow(BaseModel):
     @property
     def incremental(self) -> bool:
         return self.load_type == LoadType.incremental_load
+
+    @field_validator("output_table_name")
+    @classmethod
+    def _validate_output_table_name(cls, value: str) -> str:
+        # Empty is allowed (the lenient sync-action default; modes fall back to a derived name).
+        # Only a supplied value is checked, so it can't smuggle a path separator or '..' into the
+        # output path — the child-table path also splices an API-supplied sublist name onto this.
+        if value and (".." in value or not _SAFE_TABLE_NAME.match(value)):
+            raise UserException(
+                f"output_table_name '{value}' is not a valid table name; use letters, digits, "
+                "underscores, hyphens or dots only (no path separators or '..')."
+            )
+        return value
 
     @model_validator(mode="after")
     def _validate_incremental_pk(self, info: ValidationInfo) -> BaseRow:
@@ -248,7 +269,10 @@ class Configuration:
                 self.row = _ROW_ADAPTER.validate_python(data)
         except ValidationError as e:
             error_messages = [f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors()]
-            raise UserException(f"Validation Error: {', '.join(error_messages)}") from e
+            # `from None`: the chained ValidationError's str embeds a truncated ``input_value`` of the
+            # merged params (including a prefix of the TBA secrets), which logging.exception would
+            # otherwise print. error_messages above already gives a clear, secret-free message.
+            raise UserException(f"Validation Error: {', '.join(error_messages)}") from None
 
     def validate_for_run(self) -> RecordRow | SuiteQLRow | SavedSearchRow | RestletRow:
         """Re-validate the row for an actual run, enforcing required-field and incremental rules.
@@ -263,5 +287,7 @@ class Configuration:
             self.row = _ROW_ADAPTER.validate_python(self._raw, context=_RUNTIME_CONTEXT)
         except ValidationError as e:
             error_messages = [f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors()]
-            raise UserException(f"Validation Error: {', '.join(error_messages)}") from e
+            # See Configuration.__init__: `from None` keeps the secret-bearing ValidationError cause
+            # out of the log.
+            raise UserException(f"Validation Error: {', '.join(error_messages)}") from None
         return self.row

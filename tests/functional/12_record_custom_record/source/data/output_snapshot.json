@@ -4,7 +4,6 @@
   "tables": {
     "custom_state_scenario.csv": {
       "columns": [
-        "links",
         "custrecord_ste_lookup_scenario_sysid",
         "id",
         "isInactive",
@@ -12,15 +11,15 @@
         "owner",
         "scriptId"
       ],
-      "hash": "sha256:cd4ae3669530404b6df1d48d16dc88bdaaf873e6d0f39a7a7031126490d52b00",
+      "hash": "sha256:15fa8122570eaf3c0a2ad9bf3799935e9045dfc2feaf285bd1749df4831d64f7",
       "row_count": 5,
-      "size_bytes": 1914
+      "size_bytes": 548
     },
     "custom_state_scenario.csv.manifest": {
       "columns": null,
-      "hash": "sha256:54e4bcd50afcf0ca4f43d09fc944d8be56f760a9c58f3066e2020d5fc5d897a6",
+      "hash": "sha256:75464eeec52115fbe6b5e396716170d5985f43573dad4fc7373eb2f62c816228",
       "row_count": null,
-      "size_bytes": 754
+      "size_bytes": 1086
     }
   },
   "version": "1.0"

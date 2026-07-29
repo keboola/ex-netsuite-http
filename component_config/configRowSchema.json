@@ -97,7 +97,6 @@
         },
         "tooltip": "How to handle record sublists (line items). **Flatten** stores each sublist as a JSON string column on the parent row. **Separate child table** writes each sublist to its own table keyed to the parent id. When Separate child table is chosen, each child table's name tracks the NetSuite sublist name (`<output_table>_<sublistName>`)."
       },
-      "default": "flatten",
       "propertyOrder": 13
     },
 
@@ -133,7 +132,6 @@
       "type": "string",
       "title": "End Date",
       "description": "End of the date range for the :date_to placeholder",
-      "default": "now",
       "options": {
         "dependencies": {
           "mode": "suiteql"
@@ -191,7 +189,6 @@
         "Task",
         "Opportunity"
       ],
-      "default": "Transaction",
       "options": {
         "tags": true,
         "enum_titles": [
@@ -215,7 +212,6 @@
     "page_size": {
       "type": "integer",
       "title": "Page Size",
-      "default": 1000,
       "options": {
         "dependencies": {
           "mode": "saved_search"
@@ -264,7 +260,6 @@
           "mode": "restlet"
         }
       },
-      "default": "GET",
       "propertyOrder": 42
     },
     "query_params": {
@@ -341,7 +336,6 @@
     "page_limit": {
       "type": "integer",
       "title": "Page Size",
-      "default": 1000,
       "options": {
         "dependencies": {
           "mode": ["record", "suiteql"]
