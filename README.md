@@ -65,9 +65,9 @@ Connection (configuration level)
 | Field              | Required | Description                                                          |
 |--------------------|----------|----------------------------------------------------------------------|
 | `account_id`       | yes      | NetSuite account id, e.g. `1234567_SB1` (realm + host derivation).   |
-| `#consumer_key`    | yes      | TBA integration consumer key (encrypted).                            |
+| `consumer_key`     | yes      | TBA integration consumer key (identifier, not encrypted).            |
 | `#consumer_secret` | yes      | TBA integration consumer secret (encrypted).                         |
-| `#token_id`        | yes      | TBA access token id (encrypted).                                     |
+| `token_id`         | yes      | TBA access token id (identifier, not encrypted).                     |
 | `#token_secret`    | yes      | TBA access token secret (encrypted).                                 |
 
 Use the **Test Connection** button to verify the credentials against the metadata catalog.

@@ -91,9 +91,11 @@ class Connection(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     account_id: str
-    consumer_key: str = Field(alias="#consumer_key")
+    # consumer_key and token_id are TBA *identifiers*, not secrets, so they are plain (unencrypted)
+    # fields; only the two secrets carry the encrypted ``#`` alias.
+    consumer_key: str
     consumer_secret: str = Field(alias="#consumer_secret")
-    token_id: str = Field(alias="#token_id")
+    token_id: str
     token_secret: str = Field(alias="#token_secret")
 
 

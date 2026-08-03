@@ -6,9 +6,9 @@
       "action": "testConnection",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS"
       }
     }
@@ -20,9 +20,9 @@
       "action": "testConnection",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS"
       }
     }
@@ -34,9 +34,9 @@
       "action": "listRecordTypes",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS"
       }
     }
@@ -48,9 +48,9 @@
       "action": "listFields",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "record",
         "record_type": "customer"
@@ -64,9 +64,9 @@
       "action": "validateSuiteQL",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "suiteql",
         "query": "SELECT id, companyname FROM customer"
@@ -80,9 +80,9 @@
       "action": "validateSuiteQL",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "suiteql",
         "query": "SELECT FROM WHERE"
@@ -96,9 +96,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "record",
         "record_type": "customer",
@@ -117,9 +117,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "record",
         "record_type": "customer",
@@ -139,9 +139,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "record",
         "record_type": "customer",
@@ -160,9 +160,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "record",
         "record_type": "customer",
@@ -181,9 +181,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "record",
         "record_type": "customrecord_ste_lookup_state_scenario",
@@ -201,9 +201,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "record",
         "record_type": "customer",
@@ -222,9 +222,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "suiteql",
         "query": "SELECT id, companyname, datecreated FROM customer WHERE id BETWEEN 2206 AND 2251",
@@ -241,9 +241,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "suiteql",
         "query": "SELECT id, companyname FROM customer WHERE id BETWEEN 2206 AND 2260 ORDER BY id",
@@ -261,9 +261,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "suiteql",
         "query": "SELECT i.id AS invoice_id, i.tranid, c.companyname FROM invoice i JOIN customer c ON i.entity = c.id WHERE i.id BETWEEN 485 AND 900",
@@ -280,9 +280,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "suiteql",
         "query": "SELECT id, companyname, lastmodifieddate FROM customer WHERE lastmodifieddate BETWEEN :date_from AND :date_to AND id BETWEEN 2206 AND 2251",
@@ -301,9 +301,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "suiteql",
         "query": "SELECT id, companyname, datecreated, lastmodifieddate FROM customer WHERE id BETWEEN 2206 AND 2251",
@@ -320,9 +320,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "record",
         "record_type": "customrecord_does_not_exist_zzz",
@@ -339,9 +339,9 @@
       "action": "run",
       "parameters": {
         "account_id": "1234567_SB1",
-        "#consumer_key": "DUMMY_CK",
+        "consumer_key": "DUMMY_CK",
         "#consumer_secret": "DUMMY_CS",
-        "#token_id": "DUMMY_TI",
+        "token_id": "DUMMY_TI",
         "#token_secret": "DUMMY_TS",
         "mode": "suiteql",
         "query": "SELECT id FROM customer WHERE id BETWEEN 2206 AND 2210",

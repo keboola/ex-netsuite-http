@@ -11,9 +11,9 @@
   },
   "parameters": {
     "account_id": "1234567_SB1",
-    "#consumer_key": "REPLACE_WITH_CONSUMER_KEY",
+    "consumer_key": "REPLACE_WITH_CONSUMER_KEY",
     "#consumer_secret": "REPLACE_WITH_CONSUMER_SECRET",
-    "#token_id": "REPLACE_WITH_TOKEN_ID",
+    "token_id": "REPLACE_WITH_TOKEN_ID",
     "#token_secret": "REPLACE_WITH_TOKEN_SECRET",
     "mode": "suiteql",
     "query": "SELECT id, entityid, lastmodifieddate FROM customer WHERE lastmodifieddate BETWEEN :date_from AND :date_to ORDER BY lastmodifieddate",

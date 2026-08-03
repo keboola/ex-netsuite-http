@@ -20,9 +20,9 @@ from component import Component
 
 CONNECTION = {
     "account_id": "1234567_SB1",
-    "#consumer_key": "ck",
+    "consumer_key": "ck",
     "#consumer_secret": "cs",
-    "#token_id": "ti",
+    "token_id": "ti",
     "#token_secret": "ts",
 }
 

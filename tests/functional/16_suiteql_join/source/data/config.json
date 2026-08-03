@@ -2,9 +2,9 @@
   "action": "run",
   "parameters": {
     "account_id": "1234567_SB1",
-    "#consumer_key": "DUMMY_CK",
+    "consumer_key": "DUMMY_CK",
     "#consumer_secret": "DUMMY_CS",
-    "#token_id": "DUMMY_TI",
+    "token_id": "DUMMY_TI",
     "#token_secret": "DUMMY_TS",
     "mode": "suiteql",
     "query": "SELECT i.id AS invoice_id, i.tranid, c.companyname FROM invoice i JOIN customer c ON i.entity = c.id WHERE i.id BETWEEN 485 AND 900",

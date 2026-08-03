@@ -58,9 +58,9 @@ def _real_params(env: dict[str, str], corrupt: bool) -> dict:
     return {
         "parameters": {
             "account_id": env["NETSUITE_ACCOUNT_ID"],
-            "#consumer_key": env["NETSUITE_CONSUMER_KEY"],
+            "consumer_key": env["NETSUITE_CONSUMER_KEY"],
             "#consumer_secret": env["NETSUITE_CONSUMER_SECRET"],
-            "#token_id": env["NETSUITE_TOKEN_ID"],
+            "token_id": env["NETSUITE_TOKEN_ID"],
             "#token_secret": token_secret,
         }
     }

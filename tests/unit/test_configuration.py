@@ -16,9 +16,9 @@ from configuration import (
 
 CONNECTION = {
     "account_id": "1234567_SB1",
-    "#consumer_key": "ck",
+    "consumer_key": "ck",
     "#consumer_secret": "cs",
-    "#token_id": "ti",
+    "token_id": "ti",
     "#token_secret": "ts",
 }
 
@@ -70,7 +70,7 @@ def test_incremental_field_removed_from_model():
 
 
 def test_missing_secret_raises_user_exception():
-    data = {k: v for k, v in CONNECTION.items() if k != "#consumer_key"}
+    data = {k: v for k, v in CONNECTION.items() if k != "consumer_key"}
     data["mode"] = "suiteql"
     with pytest.raises(UserException):
         Configuration(**data)
@@ -283,7 +283,7 @@ def test_missing_secret_raises_user_exception_without_chained_cause():
     # The chained ValidationError's str embeds a truncated 'input_value' of the merged params
     # (including a prefix of the TBA secrets), which logging.exception would print. 'from None'
     # must keep it out of __cause__.
-    data = {k: v for k, v in CONNECTION.items() if k != "#consumer_key"}
+    data = {k: v for k, v in CONNECTION.items() if k != "consumer_key"}
     data["mode"] = "suiteql"
     with pytest.raises(UserException) as exc_info:
         Configuration(**data)

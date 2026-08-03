@@ -3,23 +3,27 @@
   "title": "NetSuite Connection",
   "required": [
     "account_id",
-    "#consumer_key",
+    "consumer_key",
     "#consumer_secret",
-    "#token_id",
+    "token_id",
     "#token_secret"
   ],
   "properties": {
     "account_id": {
       "type": "string",
       "title": "Account ID",
-      "description": "NetSuite account id, e.g. 1234567_SB1 (used for the realm and host derivation).",
-      "propertyOrder": 1
+      "description": "NetSuite account ID. For a sandbox, add the sandbox suffix (e.g. 1234567_SB1).",
+      "propertyOrder": 1,
+      "options": {
+        "inputAttributes": {
+          "placeholder": "1234567 or 1234567_SB1"
+        }
+      }
     },
-    "#consumer_key": {
+    "consumer_key": {
       "type": "string",
       "title": "Consumer Key",
       "description": "TBA integration consumer key.",
-      "format": "password",
       "propertyOrder": 2
     },
     "#consumer_secret": {
@@ -29,11 +33,10 @@
       "format": "password",
       "propertyOrder": 3
     },
-    "#token_id": {
+    "token_id": {
       "type": "string",
       "title": "Token ID",
       "description": "TBA access token id.",
-      "format": "password",
       "propertyOrder": 4
     },
     "#token_secret": {
