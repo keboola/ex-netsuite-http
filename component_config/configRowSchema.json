@@ -89,13 +89,13 @@
       ],
       "options": {
         "enum_titles": [
-          "Flatten into parent (JSON column)",
-          "Separate child table keyed to parent id"
+          "Keep in the parent row (as a JSON column)",
+          "Split into a separate table (linked to the parent row)"
         ],
         "dependencies": {
           "mode": "record"
         },
-        "tooltip": "How to handle record sublists (line items). **Flatten** stores each sublist as a JSON string column on the parent row. **Separate child table** writes each sublist to its own table keyed to the parent id. When Separate child table is chosen, each child table's name tracks the NetSuite sublist name (`<output_table>_<sublistName>`)."
+        "tooltip": "How to handle record sublists (line items). **Keep in the parent row** stores each sublist as a JSON-string column on the parent row. **Split into a separate table** writes each sublist to its own table, linked to the parent row by its ID; each table is named `<output_table>_<sublistName>`."
       },
       "propertyOrder": 13
     },
@@ -342,7 +342,7 @@
         },
         "tooltip": "The number of records fetched per API page. NetSuite's REST/SuiteQL surfaces cap this at 1000; higher values are capped to that maximum."
       },
-      "propertyOrder": 50
+      "propertyOrder": 63
     },
 
     "output_table_name": {
