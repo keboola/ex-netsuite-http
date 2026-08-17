@@ -116,11 +116,28 @@ def test_get_columns_suiteql_substitutes_date_placeholders_before_probe(tmp_path
     assert [e.value for e in result] == ["id"]
 
 
-def test_get_columns_suiteql_probe_failure_returns_empty(tmp_path):
+def test_get_columns_suiteql_probe_userexception_surfaces_unchanged(tmp_path):
+    # A sync action must not swallow errors — the client's clear UserException (e.g. the 401 or a SQL
+    # 400) propagates so the UI shows it instead of a silently empty picker.
     comp = _component(tmp_path, {**CONNECTION, "mode": "suiteql", "query": "SELECT bad"})
     with mock.patch.object(RestClient, "suiteql_page", side_effect=UserException("400 syntax")):
-        result = comp.get_columns()
-    assert result == []
+        with pytest.raises(UserException, match="400 syntax"):
+            comp.get_columns()
+
+
+def test_get_columns_suiteql_probe_unexpected_error_wrapped_not_swallowed(tmp_path):
+    # An unexpected (non-UserException) failure is wrapped into a visible UserException, never hidden.
+    comp = _component(tmp_path, {**CONNECTION, "mode": "suiteql", "query": "SELECT id FROM customer"})
+    with mock.patch.object(RestClient, "suiteql_page", side_effect=ConnectionError("boom")):
+        with pytest.raises(UserException, match="Couldn't load columns"):
+            comp.get_columns()
+
+
+def test_get_columns_suiteql_zero_rows_returns_empty(tmp_path):
+    # A valid query with no rows is not an error — nothing to infer, so an empty picker (no raise).
+    comp = _component(tmp_path, {**CONNECTION, "mode": "suiteql", "query": "SELECT id FROM customer"})
+    with mock.patch.object(RestClient, "suiteql_page", return_value={"items": []}):
+        assert comp.get_columns() == []
 
 
 def test_get_columns_saved_search_mode_returns_empty(tmp_path):

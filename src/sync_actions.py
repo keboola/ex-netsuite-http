@@ -11,7 +11,6 @@ The client factories (`build_signer`, `_rest_client`, …) live here too so both
 """
 
 import json
-import logging
 
 from keboola.component.base import sync_action
 from keboola.component.exceptions import UserException
@@ -139,14 +138,20 @@ class SyncActionsMixin:
 
         The SuiteQL response carries no schema, so columns are only knowable from a returned row. The
         ``:date_from`` / ``:date_to`` placeholders are substituted with a dummy literal first so a
-        date-filtered query still parses. Any failure (bad SQL, zero rows) yields no suggestions
-        rather than an error — the picker is creatable, so the user can always type the columns.
+        date-filtered query still parses. A valid query that returns zero rows yields no columns
+        (nothing to infer) — that is not an error. But a real failure (auth, network, bad SQL) must
+        NOT be swallowed: it surfaces as a UserException so the user sees why the picker is empty
+        instead of a silent blank. The picker is creatable, so they can still type the columns.
         """
         try:
             payload = self._rest_client().suiteql_page(substitute_probe_dates(row.query), limit=1)
-        except Exception as exc:  # noqa: BLE001 — suggestion helper must never hard-fail the picker
-            logging.info("getColumns SuiteQL probe failed (%s); returning no suggestions.", type(exc).__name__)
-            return []
+        except UserException:
+            raise  # already a clear, user-facing message (e.g. the 401) — let the UI show it
+        except Exception as exc:  # noqa: BLE001 — surface any other failure, don't hide it
+            raise UserException(
+                f"Couldn't load columns: the SuiteQL probe failed ({type(exc).__name__}). "
+                "Check the query and connection, or type the key column names manually."
+            ) from exc
         columns: list[str] = []
         for item in payload.get("items") or []:
             for key in item:
