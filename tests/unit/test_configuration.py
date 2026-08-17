@@ -255,25 +255,45 @@ def test_restlet_query_params_must_be_object():
 # ---- output_table_name is a bare slug (finding #4) --------------------------
 
 
+def _record_cfg(**overrides):
+    return _cfg(mode="record", record_type="customer", load_type="full_load", **overrides)
+
+
 def test_output_table_name_with_path_separator_rejected():
+    cfg = _record_cfg(output_table_name="../evil")
     with pytest.raises(UserException, match="output_table_name"):
-        _cfg(mode="record", record_type="customer", output_table_name="../evil")
+        cfg.validate_for_run()
 
 
 def test_output_table_name_with_backslash_rejected():
+    cfg = _record_cfg(output_table_name="a\\b")
     with pytest.raises(UserException, match="output_table_name"):
-        _cfg(mode="record", record_type="customer", output_table_name="a\\b")
+        cfg.validate_for_run()
+
+
+def test_output_table_name_with_trailing_newline_rejected():
+    # fullmatch (not `$`) so a trailing newline can't slip into the CSV filename it would create.
+    cfg = _record_cfg(output_table_name="table\n")
+    with pytest.raises(UserException, match="output_table_name"):
+        cfg.validate_for_run()
 
 
 def test_output_table_name_valid_slug_passes():
-    cfg = _cfg(mode="record", record_type="customer", output_table_name="my_table-1.csv")
-    assert cfg.row.output_table_name == "my_table-1.csv"
+    cfg = _record_cfg(output_table_name="my_table-1.csv")
+    assert cfg.validate_for_run().output_table_name == "my_table-1.csv"
+
+
+def test_output_table_name_not_enforced_during_lenient_construction():
+    # Runtime-gated like the other row validators: a partially-filled sync-action row with a not-yet
+    # valid name must still construct so the picker works; enforcement happens at run start.
+    cfg = _cfg(mode="record", record_type="customer", output_table_name="../evil")
+    assert cfg.row.output_table_name == "../evil"  # no raise at construction
 
 
 def test_output_table_name_empty_default_passes():
-    # Empty is the lenient sync-action default; only a supplied value is validated.
-    cfg = _cfg(mode="record")
-    assert cfg.row.output_table_name == ""
+    # Empty is the lenient sync-action default; modes fall back to a derived name.
+    cfg = _record_cfg()
+    assert cfg.validate_for_run().output_table_name == ""
 
 
 # ---- no chained ValidationError cause in the raised UserException (finding #5) --

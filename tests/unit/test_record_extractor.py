@@ -264,6 +264,26 @@ def test_nested_links_stripped_from_flatten_json_blob():
     assert json.loads(rows[0]["addressBook"]) == [{"line": 1}]
 
 
+def test_child_table_name_sanitizes_unsafe_sublist_key():
+    # The API-supplied sublist key is spliced into the child-table name; an unsafe key must be
+    # sanitized so it can't escape data/out/tables (symmetry with the output_table_name slug guard).
+    row = _row(sublist_handling="child_table", output_table_name="customer", load_type="full_load")
+    records = [{"id": "1", "bad/name": {"items": [{"line": 1}]}}]
+    ext, _ = _extractor(row, records)
+    names = {t.name for t in ext.extract().tables}
+    assert "customer_bad_name" in names
+    assert not any("/" in n for n in names)
+
+
+def test_record_type_fallback_table_name_sanitized():
+    # With no output_table_name the table name falls back to record_type, which is unvalidated config
+    # input, so it too must be sanitized.
+    row = _row(record_type="weird/type", output_table_name="", load_type="full_load")
+    records = [{"id": "1", "entityid": "ACME"}]
+    ext, _ = _extractor(row, records)
+    assert ext.extract().tables[0].name == "weird_type"
+
+
 def test_nested_links_stripped_from_child_table_rows():
     row = _row(sublist_handling="child_table", output_table_name="customer", load_type="full_load")
     records = [

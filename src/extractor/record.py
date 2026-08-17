@@ -11,6 +11,7 @@ wired pending sandbox coverage and user sign-off.
 
 import json
 import logging
+import re
 from typing import Any
 
 from keboola.component.exceptions import UserException
@@ -31,6 +32,18 @@ _CHILD_KEY_CANDIDATES = ("line", "lineuniquekey", "id", "key", "sequence", "seq"
 # Keys never emitted as output columns / child tables. ``links`` is the HATEOAS navigation array
 # NetSuite attaches to every record and sublist item — it is not user data.
 _RESERVED_KEYS = frozenset({"links"})
+
+
+def _safe_segment(name: str) -> str:
+    """Reduce an API/config-supplied name to a filesystem-safe table-name segment.
+
+    ``output_table_name`` is slug-validated at config time (see ``configuration._SAFE_TABLE_NAME``),
+    but the ``record_type`` fallback and the API-supplied sublist keys spliced into child-table names
+    are not. Sanitize them the same way here so neither can escape ``data/out/tables``: keep only slug
+    characters, collapse everything else to ``_``, and never emit an empty or dot-only segment.
+    """
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]", "_", name).strip(".")
+    return cleaned or "table"
 
 
 def _strip_links(value: Any) -> Any:
@@ -62,7 +75,7 @@ class RecordExtractor(Extractor):
             logging.debug("Record filter q=%s", q.replace("\r", " ").replace("\n", " "))
         records = self._fetch_records(q)
 
-        table_name = self.row.output_table_name or self.row.record_type
+        table_name = self.row.output_table_name or _safe_segment(self.row.record_type)
         if self.row.sublist_handling == SublistHandling.child_table:
             tables = self._split_child_tables(records, table_name)
         else:
@@ -175,7 +188,7 @@ class RecordExtractor(Extractor):
             # loss). Propagate incremental and a composite PK [_parent_id, <line key>].
             tables.append(
                 OutputTable(
-                    name=f"{table_name}_{sublist_name}",
+                    name=f"{table_name}_{_safe_segment(sublist_name)}",
                     rows=rows,
                     primary_key=self._child_primary_key(sublist_name, rows),
                     incremental=self.row.incremental,

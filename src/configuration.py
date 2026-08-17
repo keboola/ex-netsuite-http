@@ -25,7 +25,6 @@ from pydantic import (
     ValidationError,
     ValidationInfo,
     computed_field,
-    field_validator,
     model_validator,
 )
 
@@ -41,8 +40,9 @@ _DATE_TO_PLACEHOLDER = ":date_to"
 # Output table name pattern. The value becomes ``<output_table_name>.csv`` under ``data/out/tables``
 # (and child tables splice an API-supplied sublist name onto it), so it must be a bare filesystem-safe
 # slug — letters, digits, underscores, hyphens, dots — with no path separator or '..', so a crafted
-# name cannot escape the output directory.
-_SAFE_TABLE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
+# name cannot escape the output directory. Matched with ``fullmatch`` (not ``$``) so a trailing
+# newline cannot slip past into the filename.
+_SAFE_TABLE_NAME = re.compile(r"[A-Za-z0-9_.-]+")
 
 
 def _is_runtime(info: ValidationInfo) -> bool:
@@ -117,18 +117,18 @@ class BaseRow(BaseModel):
     def incremental(self) -> bool:
         return self.load_type == LoadType.incremental_load
 
-    @field_validator("output_table_name")
-    @classmethod
-    def _validate_output_table_name(cls, value: str) -> str:
-        # Empty is allowed (the lenient sync-action default; modes fall back to a derived name).
-        # Only a supplied value is checked, so it can't smuggle a path separator or '..' into the
-        # output path — the child-table path also splices an API-supplied sublist name onto this.
-        if value and (".." in value or not _SAFE_TABLE_NAME.match(value)):
+    @model_validator(mode="after")
+    def _validate_output_table_name(self, info: ValidationInfo) -> BaseRow:
+        # Runtime-gated like _validate_incremental_pk: sync actions build partially-filled rows before
+        # the user has finished, so only enforce at run start. Empty is allowed (modes fall back to a
+        # derived name); a supplied value can't smuggle a path separator or '..' into the output path.
+        name = self.output_table_name
+        if _is_runtime(info) and name and (".." in name or not _SAFE_TABLE_NAME.fullmatch(name)):
             raise UserException(
-                f"output_table_name '{value}' is not a valid table name; use letters, digits, "
+                f"output_table_name '{name}' is not a valid table name; use letters, digits, "
                 "underscores, hyphens or dots only (no path separators or '..')."
             )
-        return value
+        return self
 
     @model_validator(mode="after")
     def _validate_incremental_pk(self, info: ValidationInfo) -> BaseRow:
