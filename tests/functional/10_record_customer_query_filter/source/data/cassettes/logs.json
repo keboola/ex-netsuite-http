@@ -1,0 +1,18 @@
+{
+  "exit_code": null,
+  "stderr": "",
+  "logs": [
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Fetching record collection 'customer'",
+      "timestamp": "2026-07-22T16:01:06.292Z"
+    },
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Wrote 2 rows to table 'customer_filtered'.",
+      "timestamp": "2026-07-22T16:01:07.378Z"
+    }
+  ]
+}

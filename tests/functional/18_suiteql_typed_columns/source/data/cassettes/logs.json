@@ -1,0 +1,18 @@
+{
+  "exit_code": null,
+  "stderr": "",
+  "logs": [
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Running SuiteQL query",
+      "timestamp": "2026-07-21T12:54:40.332Z"
+    },
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Wrote 5 rows to table 'suiteql_typed'.",
+      "timestamp": "2026-07-21T12:54:40.548Z"
+    }
+  ]
+}

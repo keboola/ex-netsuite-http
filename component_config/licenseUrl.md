@@ -1,1 +1,1 @@
-/blob/master/LICENSE.md
+https://github.com/keboola/ex-netsuite-http/blob/main/LICENSE.md

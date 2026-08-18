@@ -1,0 +1,23 @@
+{
+  "files": {},
+  "hash_algorithm": "sha256",
+  "tables": {
+    "suiteql_paged.csv": {
+      "columns": [
+        "links",
+        "companyname",
+        "id"
+      ],
+      "hash": "sha256:56af90c277a92da5e059aa642a08139e207561552a42ad83a637daa349833cd8",
+      "row_count": 15,
+      "size_bytes": 469
+    },
+    "suiteql_paged.csv.manifest": {
+      "columns": null,
+      "hash": "sha256:99a023eb82bf8543f7a6c3ba264415b58c55ab7b80d02e9b3f9d858bb086a888",
+      "row_count": null,
+      "size_bytes": 402
+    }
+  },
+  "version": "1.0"
+}

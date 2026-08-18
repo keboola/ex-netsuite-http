@@ -1,0 +1,26 @@
+{
+  "files": {},
+  "hash_algorithm": "sha256",
+  "tables": {
+    "custom_state_scenario.csv": {
+      "columns": [
+        "custrecord_ste_lookup_scenario_sysid",
+        "id",
+        "isInactive",
+        "name",
+        "owner",
+        "scriptId"
+      ],
+      "hash": "sha256:15fa8122570eaf3c0a2ad9bf3799935e9045dfc2feaf285bd1749df4831d64f7",
+      "row_count": 5,
+      "size_bytes": 548
+    },
+    "custom_state_scenario.csv.manifest": {
+      "columns": null,
+      "hash": "sha256:75464eeec52115fbe6b5e396716170d5985f43573dad4fc7373eb2f62c816228",
+      "row_count": null,
+      "size_bytes": 1086
+    }
+  },
+  "version": "1.0"
+}

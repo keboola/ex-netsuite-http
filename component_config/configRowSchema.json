@@ -1,1 +1,401 @@
-{}
+{
+  "type": "object",
+  "title": "Extraction Target",
+  "required": [
+    "mode"
+  ],
+  "properties": {
+    "mode": {
+      "type": "string",
+      "title": "Mode",
+      "description": "What to extract",
+      "enum": [
+        "record",
+        "suiteql",
+        "saved_search",
+        "restlet"
+      ],
+      "options": {
+        "enum_titles": [
+          "Record",
+          "SuiteQL",
+          "Saved Search",
+          "RESTlet"
+        ],
+        "tooltip": "**Record** reads a NetSuite record type with an optional filter. **SuiteQL** runs an arbitrary SuiteQL query. **Saved Search** runs an existing saved search. **RESTlet** calls a customer-deployed RESTlet script."
+      },
+      "default": "suiteql",
+      "propertyOrder": 1
+    },
+
+    "record_type": {
+      "type": "string",
+      "title": "Record Type",
+      "description": "NetSuite record type to extract",
+      "format": "select",
+      "enum": [],
+      "options": {
+        "dependencies": {
+          "mode": "record"
+        },
+        "async": {
+          "label": "Load record types",
+          "action": "listRecordTypes",
+          "autoload": true,
+          "cache": true
+        }
+      },
+      "propertyOrder": 10
+    },
+    "fields": {
+      "type": "array",
+      "title": "Fields",
+      "description": "Optional column projection; leave empty for all fields",
+      "format": "select",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": []
+      },
+      "options": {
+        "dependencies": {
+          "mode": "record"
+        },
+        "async": {
+          "label": "Load fields",
+          "action": "listFields"
+        }
+      },
+      "propertyOrder": 11
+    },
+    "query_filter": {
+      "type": "string",
+      "title": "Query Filter (q)",
+      "description": "Optional record filter using NetSuite's q syntax",
+      "options": {
+        "dependencies": {
+          "mode": "record"
+        },
+        "tooltip": "A NetSuite record-filter expression, e.g. `email CONTAINS \"acme\"` or `id BETWEEN [100, 200]`. See [Filtering results using the q parameter](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_1545222128.html). Leave empty to extract everything."
+      },
+      "propertyOrder": 12
+    },
+    "sublist_handling": {
+      "type": "string",
+      "title": "Sublist Handling",
+      "enum": [
+        "flatten",
+        "child_table"
+      ],
+      "options": {
+        "enum_titles": [
+          "Keep in the parent row (as a JSON column)",
+          "Split into a separate table (linked to the parent row)"
+        ],
+        "dependencies": {
+          "mode": "record"
+        },
+        "tooltip": "How to handle record sublists (line items). **Keep in the parent row** stores each sublist as a JSON-string column on the parent row. **Split into a separate table** writes each sublist to its own table, linked to the parent row by its ID; each table is named `<output_table>_<sublistName>`."
+      },
+      "propertyOrder": 13
+    },
+
+    "query": {
+      "type": "string",
+      "title": "SuiteQL Query",
+      "description": "SuiteQL query to run",
+      "format": "editor",
+      "options": {
+        "dependencies": {
+          "mode": "suiteql"
+        },
+        "editor": {
+          "mode": "text/x-sql"
+        },
+        "tooltip": "A [SuiteQL](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156257770590.html) query. To filter by the date range below, put the `:date_from` and `:date_to` placeholders in the WHERE clause, e.g. `WHERE lastmodifieddate BETWEEN :date_from AND :date_to`. A single range is issued as-is (no automatic chunking), so narrow the range if it would exceed NetSuite's ~100k-row SuiteQL result ceiling."
+      },
+      "propertyOrder": 20
+    },
+    "date_from": {
+      "type": "string",
+      "title": "Start Date",
+      "description": "Start of the date range for the :date_from placeholder",
+      "options": {
+        "dependencies": {
+          "mode": "suiteql"
+        },
+        "tooltip": "An absolute date (`2024-01-01`) or a relative expression (`5 days ago`, `2 months ago`). Substituted into the query's `:date_from` placeholder at run time. Leave empty to disable date substitution. If set, the query must contain `:date_from` / `:date_to`."
+      },
+      "propertyOrder": 21
+    },
+    "date_to": {
+      "type": "string",
+      "title": "End Date",
+      "description": "End of the date range for the :date_to placeholder",
+      "options": {
+        "dependencies": {
+          "mode": "suiteql"
+        },
+        "tooltip": "An absolute date (`2024-03-01`) or a relative expression (`now`, `today`, `yesterday`). Substituted into the query's `:date_to` placeholder at run time. Defaults to `now`."
+      },
+      "propertyOrder": 22
+    },
+    "validate_suiteql": {
+      "type": "button",
+      "format": "sync-action",
+      "options": {
+        "dependencies": {
+          "mode": "suiteql"
+        },
+        "async": {
+          "label": "Validate SuiteQL",
+          "action": "validateSuiteQL"
+        }
+      },
+      "propertyOrder": 23
+    },
+
+    "saved_search_id": {
+      "type": "string",
+      "title": "Saved Search",
+      "description": "Saved search to execute (customsearch_*)",
+      "format": "select",
+      "enum": [],
+      "options": {
+        "dependencies": {
+          "mode": "saved_search"
+        },
+        "async": {
+          "label": "Load saved searches",
+          "action": "listSavedSearches"
+        },
+        "tooltip": "Define any filters inside the saved search itself — the component runs the search exactly as defined and does not add filtering. See [Defining a Saved Search](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N611578.html)."
+      },
+      "propertyOrder": 30
+    },
+    "search_record_type": {
+      "type": "string",
+      "title": "Search Record Type",
+      "description": "The saved search's underlying record type",
+      "format": "select",
+      "enum": [
+        "Transaction",
+        "Customer",
+        "Item",
+        "Contact",
+        "Employee",
+        "Vendor",
+        "SupportCase",
+        "Task",
+        "Opportunity"
+      ],
+      "options": {
+        "tags": true,
+        "enum_titles": [
+          "Transaction",
+          "Customer",
+          "Item",
+          "Contact",
+          "Employee",
+          "Vendor",
+          "Support Case",
+          "Task",
+          "Opportunity"
+        ],
+        "dependencies": {
+          "mode": "saved_search"
+        },
+        "tooltip": "The record type the saved search is built on — it selects the request type used to run the search. Pick a standard type from the list, or type any other value, including custom record types (`customrecord_*`)."
+      },
+      "propertyOrder": 31
+    },
+    "page_size": {
+      "type": "integer",
+      "title": "Page Size",
+      "options": {
+        "inputAttributes": {
+          "placeholder": "1000"
+        },
+        "dependencies": {
+          "mode": "saved_search"
+        },
+        "tooltip": "Rows fetched per search page. Leave empty to use the default (1000)."
+      },
+      "propertyOrder": 32
+    },
+
+    "script_id": {
+      "type": "string",
+      "title": "Script ID",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        }
+      },
+      "propertyOrder": 40
+    },
+    "deploy_id": {
+      "type": "string",
+      "title": "Deploy ID",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        }
+      },
+      "propertyOrder": 41
+    },
+    "method": {
+      "type": "string",
+      "title": "HTTP Method",
+      "enum": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
+      "options": {
+        "enum_titles": [
+          "GET",
+          "POST",
+          "PUT",
+          "DELETE"
+        ],
+        "dependencies": {
+          "mode": "restlet"
+        }
+      },
+      "propertyOrder": 42
+    },
+    "query_params": {
+      "type": "string",
+      "title": "Query Parameters",
+      "description": "Optional query parameters as a JSON object",
+      "format": "editor",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        },
+        "editor": {
+          "mode": "application/json"
+        },
+        "tooltip": "A JSON object of extra query parameters sent to the RESTlet, e.g. `{\"since\": \"2024-01-01\"}`. Must be valid JSON. Leave empty for none. See [RESTlets](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N2971511.html)."
+      },
+      "propertyOrder": 43
+    },
+    "request_body": {
+      "type": "string",
+      "title": "Request Body",
+      "description": "Optional JSON request body (for POST/PUT)",
+      "format": "editor",
+      "options": {
+        "dependencies": {
+          "mode": "restlet",
+          "method": ["POST", "PUT"]
+        },
+        "editor": {
+          "mode": "application/json"
+        },
+        "tooltip": "The JSON body sent to the RESTlet on POST/PUT requests. Must be valid JSON (an object or an array). Leave empty for no body."
+      },
+      "propertyOrder": 44
+    },
+    "record_path": {
+      "type": "string",
+      "title": "Record Path",
+      "description": "Dotted path to the rows in the response, e.g. data.results",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        },
+        "tooltip": "The dotted path to the array (or object) of records in the RESTlet response, e.g. `data.results`. Leave empty when the records are at the top level of the response."
+      },
+      "propertyOrder": 45
+    },
+    "pagination_cursor_field": {
+      "type": "string",
+      "title": "Pagination Cursor Field",
+      "description": "Optional response field holding the next-page cursor",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        },
+        "tooltip": "The response field whose value is passed back as the `cursor` query parameter to fetch the next page. Leave empty when the RESTlet is not paginated."
+      },
+      "propertyOrder": 46
+    },
+    "preview_restlet": {
+      "type": "button",
+      "format": "sync-action",
+      "options": {
+        "dependencies": {
+          "mode": "restlet"
+        },
+        "async": {
+          "label": "Preview RESTlet",
+          "action": "previewRestlet"
+        }
+      },
+      "propertyOrder": 47
+    },
+
+    "page_limit": {
+      "type": "integer",
+      "title": "Page Size",
+      "options": {
+        "inputAttributes": {
+          "placeholder": "1000"
+        },
+        "dependencies": {
+          "mode": ["record", "suiteql"]
+        },
+        "tooltip": "The number of records fetched per API page. Leave empty to use the default (1000). NetSuite's REST/SuiteQL surfaces cap this at 1000; higher values are capped to that maximum."
+      },
+      "propertyOrder": 63
+    },
+
+    "output_table_name": {
+      "type": "string",
+      "title": "Output Table Name",
+      "description": "Destination table name; defaults to a name derived from the target",
+      "propertyOrder": 60
+    },
+    "primary_key": {
+      "type": "array",
+      "title": "Primary Key",
+      "description": "Columns that uniquely identify a row",
+      "format": "select",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": []
+      },
+      "options": {
+        "tags": true,
+        "async": {
+          "label": "Load columns",
+          "action": "getColumns"
+        },
+        "tooltip": "The column(s) that uniquely identify a row. Load suggestions or type any column name. On an incremental load the table is upserted (deduplicated) on this key; a primary key is required when Load Type is Incremental."
+      },
+      "propertyOrder": 61
+    },
+    "load_type": {
+      "type": "string",
+      "title": "Load Type",
+      "description": "How the output table is written to Storage",
+      "enum": [
+        "full_load",
+        "incremental_load"
+      ],
+      "options": {
+        "enum_titles": [
+          "Full load",
+          "Incremental load"
+        ],
+        "tooltip": "**Full load** rewrites the whole table on every run. **Incremental load** upserts the fetched rows into the table by the primary key, keeping rows that are not in the current batch. Incremental requires a primary key."
+      },
+      "default": "incremental_load",
+      "propertyOrder": 62
+    }
+  }
+}

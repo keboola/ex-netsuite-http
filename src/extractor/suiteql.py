@@ -1,0 +1,87 @@
+"""``suiteql`` mode extractor — arbitrary SuiteQL over REST.
+
+Runs the user's query with ``hasMore`` pagination. When the query contains the ``:date_from`` /
+``:date_to`` placeholders, the configured date range (parsed with Keboola's dateparser — relative
+strings like "5 days ago" or absolute dates) is substituted into the query before it runs. A single
+range is issued verbatim (no auto sub-chunking); a range that would exceed NetSuite's ~100k SuiteQL
+row ceiling should be narrowed. Typed columns are inferred for the native-types manifest.
+"""
+
+import logging
+from datetime import datetime
+from typing import cast
+
+from keboola.component.exceptions import UserException
+from keboola.utils import parse_datetime_interval
+
+from client.rest import RestClient
+from configuration import SuiteQLRow
+from extractor.base import ExtractionResult, Extractor, OutputTable, resolve_stream_schema
+
+_DATE_FROM = ":date_from"
+_DATE_TO = ":date_to"
+
+# NetSuite SuiteQL rejects a bare quoted ISO literal in a date/timestamp comparison (400); the
+# substituted date must be wrapped in TO_TIMESTAMP with a matching mask.
+_TS_MASK = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'
+
+
+def _ts(dt: datetime) -> str:
+    """Render a datetime as a SuiteQL TO_TIMESTAMP literal NetSuite accepts."""
+    return f"TO_TIMESTAMP('{dt.strftime('%Y-%m-%dT%H:%M:%SZ')}', '{_TS_MASK}')"
+
+
+def substitute_probe_dates(query: str) -> str:
+    """Replace the ``:date_from`` / ``:date_to`` placeholders with a fixed dummy literal.
+
+    Used by the ``getColumns`` column probe, which only needs the query to parse and return one row
+    so it can read the column names — the actual date values are irrelevant. Without this a
+    date-filtered query would 400 on the unbound placeholders and yield no column suggestions.
+    """
+    dummy = _ts(datetime(1970, 1, 1))
+    return query.replace(_DATE_FROM, dummy).replace(_DATE_TO, dummy)
+
+
+class SuiteQLExtractor(Extractor):
+    def __init__(self, row: SuiteQLRow, rest_client: RestClient):
+        self.row = row
+        self.rest_client = rest_client
+
+    def extract(self) -> ExtractionResult:
+        query = self._bind_dates(self.row.query)
+        logging.info("Running SuiteQL query")
+        # Stream the paged result straight to the writer instead of materializing it (a ~100k-row
+        # pull would OOM); the column set + native types are resolved from the first row only.
+        stream, columns, column_types = resolve_stream_schema(
+            self.rest_client.iter_suiteql(query, limit=self.row.page_limit)
+        )
+        table = OutputTable(
+            name=self.row.output_table_name or "suiteql_result",
+            rows=stream,
+            primary_key=self.row.primary_key,
+            incremental=self.row.incremental,
+            columns=columns,
+            column_types=column_types,
+        )
+        return ExtractionResult(tables=[table])
+
+    def _bind_dates(self, query: str) -> str:
+        """Substitute the parsed date range into the ':date_from' / ':date_to' placeholders.
+
+        No-op when neither placeholder is present. When present, ``date_from`` is guaranteed set by
+        the run-start validator; ``date_to`` defaults to "now". Both are parsed with Keboola's
+        dateparser and rendered as TO_TIMESTAMP literals.
+        """
+        if _DATE_FROM not in query and _DATE_TO not in query:
+            return query
+        try:
+            # Called without strformat, so the helper returns datetimes (its return type is a union
+            # only because of the optional strformat overload).
+            start, end = cast(tuple[datetime, datetime], parse_datetime_interval(self.row.date_from, self.row.date_to))
+        except (ValueError, TypeError) as exc:
+            raise UserException(
+                f"Could not parse the date range (Start Date '{self.row.date_from}', End Date "
+                f"'{self.row.date_to}'): {exc}. Use an absolute date (2024-01-01) or a relative "
+                "string dateparser understands (e.g. '5 days ago', 'now')."
+            ) from exc
+        return query.replace(_DATE_FROM, _ts(start)).replace(_DATE_TO, _ts(end))

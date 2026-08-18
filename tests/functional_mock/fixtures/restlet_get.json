@@ -1,0 +1,4 @@
+{
+  "_comment": "SYNTHETIC fixture (not a live recording): a RESTlet GET JSON response with rows at data.results. Stands in for a live cassette because no RESTlet was deployed in the sandbox and creds could not deploy one.",
+  "data": {"results": [{"id": "1", "name": "Alpha"}, {"id": "2", "name": "Beta"}]}
+}

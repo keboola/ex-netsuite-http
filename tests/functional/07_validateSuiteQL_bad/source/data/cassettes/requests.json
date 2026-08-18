@@ -1,0 +1,7 @@
+{
+  "_metadata": {"freeze_time": null, "keboola_vcr_version": "0.6.0", "recorded_at": "2026-07-21T12:54:22.878131+00:00"},
+  "interactions": [
+    {"request": {"body": "{\"q\": \"SELECT FROM WHERE\"}", "headers": {"Accept": ["*/*"], "Content-Length": ["26"], "Content-Type": ["application/json"]}, "method": "POST", "uri": "https://account.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=1&offset=0"}, "response": {"body": {"string": "{\"type\":\"https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.1\",\"title\":\"Bad Request\",\"status\":400,\"o:errorDetails\":[{\"detail\":\"Invalid search query. Detailed unprocessed description follows. Search error occurred: Failed to parse SQL [SELECT FROM WHERE]: syntax error, state:52(10102) near: FROM(1,8, token code:0)\\nno_root_node(-1000) near: no root node(0,0, token code:0).\",\"o:errorQueryParam\":\"q\",\"o:errorCode\":\"INVALID_PARAMETER\"}]}\n"}, "headers": {"Content-Type": ["application/vnd.oracle.resource+json; type=error; charset=UTF-8"], "content-length": ["443"]}, "status": {"code": 400, "message": "Bad Request"}}}
+  ],
+  "version": 1
+}

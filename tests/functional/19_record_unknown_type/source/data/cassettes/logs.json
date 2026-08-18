@@ -1,0 +1,18 @@
+{
+  "exit_code": 1,
+  "stderr": "NetSuite request to /services/rest/record/v1/customrecord_does_not_exist_zzz failed (404).\nTraceback (most recent call last):\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/src/component.py\", line 238, in <module>\n    comp.execute_action()\n    ~~~~~~~~~~~~~~~~~~~^^\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/.venv/lib/python3.14/site-packages/keboola/component/base.py\", line 251, in execute_action\n    return self._do_execute_action()\n           ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/.venv/lib/python3.14/site-packages/keboola/component/base.py\", line 265, in _do_execute_action\n    return action_method()\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/src/component.py\", line 141, in run\n    result = extractor.extract()\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/src/extractor/record.py\", line 65, in extract\n    records = self._fetch_records(q)\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/src/extractor/record.py\", line 94, in _fetch_records\n    for item in collection:\n                ^^^^^^^^^^\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/src/client/rest.py\", line 42, in iter_record_collection\n    response = self._signed_request(\"GET\", url, params=params)\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/src/client/http_base.py\", line 98, in _signed_request\n    raise UserException(message)\nkeboola.component.exceptions.UserException: NetSuite request to /services/rest/record/v1/customrecord_does_not_exist_zzz failed (404).\n",
+  "logs": [
+    {
+      "level": "INFO",
+      "logger": "root",
+      "message": "Fetching record collection 'customrecord_does_not_exist_zzz'",
+      "timestamp": "2026-07-21T12:54:40.831Z"
+    },
+    {
+      "level": "ERROR",
+      "logger": "root",
+      "message": "NetSuite request to /services/rest/record/v1/customrecord_does_not_exist_zzz failed (404).\nTraceback (most recent call last):\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/src/component.py\", line 238, in <module>\n    comp.execute_action()\n    ~~~~~~~~~~~~~~~~~~~^^\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/.venv/lib/python3.14/site-packages/keboola/component/base.py\", line 251, in execute_action\n    return self._do_execute_action()\n           ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/.venv/lib/python3.14/site-packages/keboola/component/base.py\", line 265, in _do_execute_action\n    return action_method()\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/src/component.py\", line 141, in run\n    result = extractor.extract()\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/src/extractor/record.py\", line 65, in extract\n    records = self._fetch_records(q)\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/src/extractor/record.py\", line 94, in _fetch_records\n    for item in collection:\n                ^^^^^^^^^^\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/src/client/rest.py\", line 42, in iter_record_collection\n    response = self._signed_request(\"GET\", url, params=params)\n  File \"/Users/matyasjirat/VSCodeProjects/Keboola/component-netsuite/src/client/http_base.py\", line 98, in _signed_request\n    raise UserException(message)\nkeboola.component.exceptions.UserException: NetSuite request to /services/rest/record/v1/customrecord_does_not_exist_zzz failed (404).",
+      "timestamp": "2026-07-21T12:54:41.017Z"
+    }
+  ]
+}

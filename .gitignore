@@ -21,3 +21,6 @@ tests/functional/*/source/data/in/
 # local secrets and build-lifecycle trackers (never commit)
 secrets.env
 docs/superpowers/*-lifecycle.md
+
+# local scratch space (never commit — may hold probes, notes, live-cred bodies)
+scratchpad/

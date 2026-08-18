@@ -1,0 +1,4 @@
+{
+  "_comment": "SYNTHETIC fixture: RESTlet POST-with-body JSON response.",
+  "data": {"results": [{"id": "10", "status": "created"}]}
+}

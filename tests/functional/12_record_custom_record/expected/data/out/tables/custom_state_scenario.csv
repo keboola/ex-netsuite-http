@@ -1,0 +1,5 @@
+custrecord_ste_lookup_scenario_sysid,id,isInactive,name,owner,scriptId
+CALIFORNIA,3,False,California,"{""id"": ""4"", ""refName"": ""Amin Al Kallachi""}",customrecord_ste_lookup_st_sc_california
+NO_TAX,4,False,No Tax,"{""id"": ""4"", ""refName"": ""Amin Al Kallachi""}",customrecord_ste_lookup_st_sc_no_tax
+SHIP_FROM,1,False,Ship From,"{""id"": ""4"", ""refName"": ""Amin Al Kallachi""}",customrecord_ste_lookup_st_sc_ship_from
+SHIP_TO,2,False,Ship To,"{""id"": ""4"", ""refName"": ""Amin Al Kallachi""}",customrecord_ste_lookup_st_sc_ship_to

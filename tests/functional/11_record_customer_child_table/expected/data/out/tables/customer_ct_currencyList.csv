@@ -1,0 +1,3 @@
+_parent_id,balance,currency,depositBalance,displaySymbol,overdueBalance,overrideCurrencyFormat,symbolPlacement,unbilledOrders
+2207,0.0,"{""id"": ""2"", ""refName"": ""Euro""}",0.0,€,0.0,False,"{""id"": ""1"", ""refName"": ""Before Number""}",0.0
+2206,77724.0,"{""id"": ""2"", ""refName"": ""Euro""}",0.0,€,45804.0,False,"{""id"": ""1"", ""refName"": ""Before Number""}",0.0

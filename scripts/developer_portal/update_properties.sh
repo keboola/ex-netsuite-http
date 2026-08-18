@@ -59,3 +59,15 @@ update_property "$app_id" "uiOptions" "component_config/uiOptions.md"
 source "$(dirname "$0")/fn_actions_md_update.sh"
 # update_property actions
 update_property "$app_id" "actions" "component_config/actions.md"
+
+# NOTE — defaultBucket / defaultBucketStage are intentionally NOT synced here.
+# This extractor emits bare output table names (create_out_table_definition("foo.csv")),
+# so it requires defaultBucket=true, defaultBucketStage="in" or output mapping fails
+# with "Failed to resolve destination for output table".
+# These are [vendor] portal-direct boolean/enum properties: they are set ONCE via
+#   kbagent dev-portal patch --app "$KBC_DEVELOPERPORTAL_VENDOR.$KBC_DEVELOPERPORTAL_APP" \
+#     --data '{"defaultBucket": true, "defaultBucketStage": "in"}'
+# and are DURABLE across releases (this sync never touches them, like `encryption`).
+# They are deliberately kept out of this sync because developer-portal-cli-v2
+# update-app-property only JSON-decodes object properties; a boolean sent through it
+# would be transmitted as the string "true", which is malformed for this field.

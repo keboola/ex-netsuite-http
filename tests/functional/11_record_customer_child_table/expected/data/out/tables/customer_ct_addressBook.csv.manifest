@@ -1,0 +1,102 @@
+{
+  "incremental": false,
+  "write_always": false,
+  "delimiter": ",",
+  "enclosure": "\"",
+  "manifest_type": "out",
+  "has_header": true,
+  "schema": [
+    {
+      "name": "_parent_id",
+      "data_type": {
+        "base": {
+          "type": "STRING"
+        }
+      },
+      "nullable": true,
+      "primary_key": true
+    },
+    {
+      "name": "addressBookAddress",
+      "data_type": {
+        "base": {
+          "type": "STRING"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "addressBookAddress_text",
+      "data_type": {
+        "base": {
+          "type": "STRING"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "addressId",
+      "data_type": {
+        "base": {
+          "type": "STRING"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "defaultBilling",
+      "data_type": {
+        "base": {
+          "type": "BOOLEAN"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "defaultShipping",
+      "data_type": {
+        "base": {
+          "type": "BOOLEAN"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "id",
+      "data_type": {
+        "base": {
+          "type": "INTEGER"
+        }
+      },
+      "nullable": true,
+      "primary_key": true
+    },
+    {
+      "name": "internalId",
+      "data_type": {
+        "base": {
+          "type": "INTEGER"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "isResidential",
+      "data_type": {
+        "base": {
+          "type": "BOOLEAN"
+        }
+      },
+      "nullable": true
+    },
+    {
+      "name": "label",
+      "data_type": {
+        "base": {
+          "type": "STRING"
+        }
+      },
+      "nullable": true
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "SYNTHETIC fixture: page 1 of a marker/cursor-paginated RESTlet response (next_cursor drives the loop).",
+  "rows": [{"id": "1"}],
+  "next_cursor": "CURSOR_PAGE_2"
+}

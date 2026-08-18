@@ -1,0 +1,109 @@
+"""Shared contract for the per-mode extractors.
+
+An extractor turns one configured row into an :class:`ExtractionResult`: a list of output tables
+(streamed rows + resolved name/PK/incremental). Extractors own all NetSuite interaction and row
+mapping; ``component.py`` owns the platform I/O (writing CSVs and manifests). Keeping the two apart
+makes extractors unit-testable with mocked clients and no data directory.
+
+There is no state-file watermark: Load Type is purely the Storage write mode (full rewrite vs
+PK upsert). "Recent data" is bounded by the SuiteQL date range, the record ``q`` filter, or the
+saved search itself — not by a persisted cursor.
+"""
+
+import itertools
+from abc import ABC, abstractmethod
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass, field
+from typing import Any
+
+# Rows peeked to resolve the column union + native types before streaming the rest. Sized to about
+# one page so NetSuite's per-row null-key omission doesn't drop a column that is simply null in the
+# first row, while keeping memory bounded (never the whole ~100k result).
+SCHEMA_SAMPLE_SIZE = 1000
+
+
+@dataclass
+class OutputTable:
+    """One output table: streamed rows plus the metadata needed to write its manifest."""
+
+    name: str
+    rows: Iterable[dict[str, Any]]
+    primary_key: list[str] = field(default_factory=list)
+    incremental: bool = False
+    # Optional column ordering and per-column base types (colname -> "string"/"integer"/...).
+    columns: list[str] | None = None
+    column_types: dict[str, str] | None = None
+
+
+@dataclass
+class ExtractionResult:
+    """Everything a run produces: the tables to write."""
+
+    tables: list[OutputTable]
+
+
+class Extractor(ABC):
+    """Base interface for a single-row extraction."""
+
+    @abstractmethod
+    def extract(self) -> ExtractionResult:
+        """Fetch data and return the output tables for this row."""
+
+
+def infer_base_type(value: Any) -> str:
+    """Best-effort base type for native-types manifests, inferred from a Python value."""
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "numeric"
+    return "string"
+
+
+def collect_columns(rows: Iterable[dict[str, Any]]) -> list[str]:
+    """Return the ordered union of column names across ``rows`` (first-seen order preserved)."""
+    columns: list[str] = []
+    for row in rows:
+        for key in row:
+            if key not in columns:
+                columns.append(key)
+    return columns
+
+
+def infer_column_types(rows: Iterable[dict[str, Any]]) -> dict[str, str]:
+    """Infer a base type per column from the first non-null value seen for that column.
+
+    Dict/list values (sublists serialized to JSON at write time) stay ``string``.
+    """
+    types: dict[str, str] = {}
+    for row in rows:
+        for key, value in row.items():
+            if key not in types and value is not None and not isinstance(value, (dict, list)):
+                types[key] = infer_base_type(value)
+    return types
+
+
+def resolve_stream_schema(
+    rows: Iterable[dict[str, Any]],
+) -> tuple[Iterator[dict[str, Any]], list[str] | None, dict[str, str] | None]:
+    """Peek a bounded head of the stream to resolve the column union + native types, streamably.
+
+    Large pulls (a ~100k SuiteQL result) must never be fully materialized in memory, but the writer
+    needs the column set up front for the CSV header/manifest. NetSuite omits null-valued keys per
+    row, so peeking a single row would drop any column that is null in that row — silent data loss on
+    ragged data (the common case). We therefore buffer up to ``SCHEMA_SAMPLE_SIZE`` rows (about one
+    page) to build the column union + per-column base types, then re-yield that buffer followed by the
+    rest of the stream — consumed lazily by the CSV writer. Memory is bounded to the sample, not the
+    whole result. An empty result yields an empty stream and no schema (the writer then falls back to
+    the configured primary key).
+
+    Residual: a column that is null across the entire sampled head but populated only later is still
+    dropped; ``SCHEMA_SAMPLE_SIZE`` is sized to a full page to make that vanishingly unlikely.
+    """
+    iterator = iter(rows)
+    head = list(itertools.islice(iterator, SCHEMA_SAMPLE_SIZE))
+    if not head:
+        return iter(()), None, None
+    stream = itertools.chain(head, iterator)
+    return stream, (collect_columns(head) or None), (infer_column_types(head) or None)

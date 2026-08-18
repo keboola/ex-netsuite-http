@@ -1,0 +1,17 @@
+{
+  "action": "run",
+  "parameters": {
+    "account_id": "1234567_SB1",
+    "consumer_key": "DUMMY_CK",
+    "#consumer_secret": "DUMMY_CS",
+    "token_id": "DUMMY_TI",
+    "#token_secret": "DUMMY_TS",
+    "mode": "record",
+    "record_type": "customrecord_does_not_exist_zzz",
+    "load_type": "full_load",
+    "output_table_name": "nope",
+    "primary_key": [
+      "id"
+    ]
+  }
+}
