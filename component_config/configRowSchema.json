@@ -213,9 +213,13 @@
       "type": "integer",
       "title": "Page Size",
       "options": {
+        "inputAttributes": {
+          "placeholder": "1000"
+        },
         "dependencies": {
           "mode": "saved_search"
-        }
+        },
+        "tooltip": "Rows fetched per search page. Leave empty to use the default (1000)."
       },
       "propertyOrder": 32
     },
@@ -338,10 +342,13 @@
       "type": "integer",
       "title": "Page Size",
       "options": {
+        "inputAttributes": {
+          "placeholder": "1000"
+        },
         "dependencies": {
           "mode": ["record", "suiteql"]
         },
-        "tooltip": "The number of records fetched per API page. NetSuite's REST/SuiteQL surfaces cap this at 1000; higher values are capped to that maximum."
+        "tooltip": "The number of records fetched per API page. Leave empty to use the default (1000). NetSuite's REST/SuiteQL surfaces cap this at 1000; higher values are capped to that maximum."
       },
       "propertyOrder": 63
     },
