@@ -145,6 +145,22 @@ def test_snapshot_is_full_load_on_both_tables():
     assert all(t.incremental is False for t in result.tables)
 
 
+def test_blank_name_record_type_excluded_from_both_tables():
+    # A catalog item with no resolvable name would otherwise emit an empty-string primary key in
+    # record_types (and two such items would collide). Such items are dropped from the table and never
+    # fetched for fields, keeping the two tables consistent.
+    catalog = {
+        "items": [
+            {"name": "customer", "links": [{"href": "https://x/metadata-catalog/customer"}]},
+            {"links": []},  # no name and no href -> derived name is ""
+        ]
+    }
+    client = _client(catalog, {"customer": CUSTOMER_SCHEMA})
+    result = MetadataExtractor(row=_row(), rest_client=client).extract()
+    assert [r["name"] for r in _table(result, "record_types").rows] == ["customer"]
+    assert {r["record_type"] for r in _table(result, "fields").rows} == {"customer"}
+
+
 def test_catalog_fetch_error_propagates():
     # The initial catalog call is the auth/connection gate: unlike a per-type failure it must NOT be
     # swallowed, or the run would produce empty tables on bad credentials.

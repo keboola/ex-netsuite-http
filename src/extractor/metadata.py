@@ -36,15 +36,23 @@ class MetadataExtractor(Extractor):
 
     def extract(self) -> ExtractionResult:
         # Fetch the catalog eagerly: it is the auth gate, it is small, and it gives both the
-        # record_types rows and the list of types to walk for their fields.
+        # record_types rows and the list of types to walk for their fields. Build the rows once and
+        # drop items with no resolvable name — an empty name would emit an empty-string primary key
+        # (and two such items would collide) — then reuse that filtered list for the per-type walk so
+        # the two tables stay consistent (every record_types row has its fields fetched, and vice
+        # versa).
         catalog = self.rest_client.get_metadata_catalog()
-        items = catalog.get("items", []) or []
-        record_type_names = [name for name in (self._item_name(item) for item in items) if name]
+        record_types = [
+            {"name": name, "href": self._item_href(item)}
+            for item in (catalog.get("items", []) or [])
+            if (name := self._item_name(item))
+        ]
+        record_type_names = [row["name"] for row in record_types]
         logging.info("Found %s record types; fetching field definitions for each.", len(record_type_names))
 
         record_types_table = OutputTable(
             name="record_types",
-            rows=[{"name": self._item_name(item), "href": self._item_href(item)} for item in items],
+            rows=record_types,
             primary_key=["name"],
             incremental=self.row.incremental,
             columns=_RECORD_TYPES_COLUMNS,
@@ -75,7 +83,8 @@ class MetadataExtractor(Extractor):
             for field_name, definition in (schema.get("properties", {}) or {}).items():
                 yield self._field_row(record_type, field_name, definition)
             if index % _PROGRESS_EVERY == 0:
-                logging.info("Fetched fields for %s/%s record types.", index, total)
+                # "Processed", not "Fetched": the index counts types skipped on a per-type error too.
+                logging.info("Processed %s/%s record types.", index, total)
 
     @staticmethod
     def _field_row(record_type: str, field_name: str, definition: dict[str, Any]) -> dict[str, Any]:

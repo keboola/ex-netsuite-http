@@ -248,15 +248,29 @@ class MetadataRow(BaseRow):
     """``metadata`` mode: dump NetSuite's schema catalog (record types + their field definitions).
 
     Takes no user input — it lists every record type from the metadata catalog and fetches each
-    type's field definitions. Being a schema *snapshot*, it defaults to ``full_load`` (a full rewrite)
-    rather than the incremental default of the data modes; the schema hides Load Type for this mode so
-    it stays a rewrite (an upsert would leave stale field rows behind when a type/field disappears).
-    ``output_table_name`` / ``primary_key`` from BaseRow are unused: the extractor always writes the
-    fixed ``record_types`` / ``fields`` tables with their own primary keys.
+    type's field definitions. Being a schema *snapshot*, it is always a full rewrite (an upsert would
+    leave stale field rows behind when a type/field disappears); the schema hides Load Type, Primary
+    Key and Output Table Name for this mode, and the extractor always writes the fixed
+    ``record_types`` / ``fields`` tables with their own primary keys.
     """
 
     mode: Literal["metadata"]
     load_type: LoadType = LoadType.full_load
+
+    @model_validator(mode="before")
+    @classmethod
+    def _neutralize_stale_data_mode_fields(cls, data: Any) -> Any:
+        # The data modes' row fields don't apply to a snapshot, but a config can still CARRY them —
+        # most often when an existing row (e.g. a SuiteQL row defaulting to incremental_load) is
+        # switched to metadata: the schema hides load_type/primary_key/output_table_name but does not
+        # strip them from the saved JSON. Force them to snapshot-safe values BEFORE validation so a
+        # stale incremental_load can't demand a primary key or emit incremental manifests, and a stale
+        # invalid output_table_name can't fail an otherwise field-less run. `mode="before"` matters:
+        # it runs ahead of BaseRow's incremental+PK / output_table_name guards, which see the cleaned
+        # values.
+        if isinstance(data, dict):
+            data = {**data, "load_type": LoadType.full_load.value, "primary_key": [], "output_table_name": ""}
+        return data
 
 
 Row = Annotated[

@@ -85,6 +85,23 @@ def test_metadata_mode_needs_no_extra_fields_at_run():
     assert isinstance(row, MetadataRow)
 
 
+def test_metadata_neutralizes_stale_data_mode_fields():
+    # A row switched to metadata carries the previous mode's row fields in the saved JSON (the schema
+    # hides them but does not strip them). A stale incremental_load must not demand a primary key, and
+    # a stale invalid output_table_name must not fail an otherwise field-less snapshot run.
+    cfg = _cfg(
+        mode="metadata",
+        load_type="incremental_load",
+        primary_key=["id"],
+        output_table_name="../evil",
+    )
+    row = cfg.validate_for_run()  # no raise
+    assert row.load_type == LoadType.full_load
+    assert row.incremental is False
+    assert row.primary_key == []
+    assert row.output_table_name == ""
+
+
 def test_incremental_field_removed_from_model():
     # §4: incremental_field is gone; Load Type is purely the storage write mode.
     cfg = _cfg(mode="suiteql", query="SELECT 1")
