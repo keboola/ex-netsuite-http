@@ -7,6 +7,7 @@ from configuration import (
     Configuration,
     HttpMethod,
     LoadType,
+    MetadataRow,
     RecordRow,
     RestletRow,
     SavedSearchRow,
@@ -61,6 +62,27 @@ def test_restlet_mode_parses_to_restlet_row():
     cfg = _cfg(mode="restlet", script_id="123", deploy_id="1", method="POST")
     assert isinstance(cfg.row, RestletRow)
     assert cfg.row.method == HttpMethod.POST
+
+
+def test_metadata_mode_parses_to_metadata_row():
+    cfg = _cfg(mode="metadata")
+    assert isinstance(cfg.row, MetadataRow)
+
+
+def test_metadata_default_load_type_is_full():
+    # Metadata is a snapshot of the schema catalog, so a full rewrite is the natural default (unlike
+    # the other modes, which default to incremental).
+    cfg = _cfg(mode="metadata")
+    assert cfg.row.load_type == LoadType.full_load
+    assert cfg.row.incremental is False
+
+
+def test_metadata_mode_needs_no_extra_fields_at_run():
+    # The mode dumps everything and takes no user input, so a run must validate with only the
+    # connection + mode present.
+    cfg = _cfg(mode="metadata")
+    row = cfg.validate_for_run()
+    assert isinstance(row, MetadataRow)
 
 
 def test_incremental_field_removed_from_model():

@@ -13,16 +13,18 @@
         "record",
         "suiteql",
         "saved_search",
-        "restlet"
+        "restlet",
+        "metadata"
       ],
       "options": {
         "enum_titles": [
           "Record",
           "SuiteQL",
           "Saved Search",
-          "RESTlet"
+          "RESTlet",
+          "Metadata"
         ],
-        "tooltip": "**Record** reads a NetSuite record type with an optional filter. **SuiteQL** runs an arbitrary SuiteQL query. **Saved Search** runs an existing saved search. **RESTlet** calls a customer-deployed RESTlet script."
+        "tooltip": "**Record** reads a NetSuite record type with an optional filter. **SuiteQL** runs an arbitrary SuiteQL query. **Saved Search** runs an existing saved search. **RESTlet** calls a customer-deployed RESTlet script. **Metadata** dumps the schema catalog into two tables — `record_types` (every record type) and `fields` (their field definitions); it takes no other settings and issues one API call per record type, so a run is API-heavy."
       },
       "default": "suiteql",
       "propertyOrder": 1
@@ -357,6 +359,11 @@
       "type": "string",
       "title": "Output Table Name",
       "description": "Destination table name; defaults to a name derived from the target",
+      "options": {
+        "dependencies": {
+          "mode": ["record", "suiteql", "saved_search", "restlet"]
+        }
+      },
       "propertyOrder": 60
     },
     "primary_key": {
@@ -371,6 +378,9 @@
       },
       "options": {
         "tags": true,
+        "dependencies": {
+          "mode": ["record", "suiteql", "saved_search", "restlet"]
+        },
         "async": {
           "label": "Load columns",
           "action": "getColumns"
@@ -392,6 +402,9 @@
           "Full load",
           "Incremental load"
         ],
+        "dependencies": {
+          "mode": ["record", "suiteql", "saved_search", "restlet"]
+        },
         "tooltip": "**Full load** rewrites the whole table on every run. **Incremental load** upserts the fetched rows into the table by the primary key, keeping rows that are not in the current batch. Incremental requires a primary key."
       },
       "default": "incremental_load",

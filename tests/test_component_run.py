@@ -123,6 +123,32 @@ def test_restlet_happy_path(tmp_path):
     assert out[0]["id"] == "9"
 
 
+def test_metadata_dump_writes_record_types_and_fields(tmp_path):
+    params = {**CONNECTION, "mode": "metadata"}
+    data_dir = _make_datadir(tmp_path, params)
+    catalog = {"items": [{"name": "customer", "links": [{"href": "https://x/metadata-catalog/customer"}]}]}
+    customer_schema = {
+        "properties": {
+            "id": {"type": "string", "title": "Internal ID"},
+            "balance": {"type": ["number", "null"], "format": "double"},
+        }
+    }
+
+    def fake_catalog(self, record_type=None):
+        return catalog if record_type is None else customer_schema
+
+    with mock.patch.object(RestClient, "get_metadata_catalog", autospec=True, side_effect=fake_catalog):
+        _run(data_dir)
+
+    assert [r["name"] for r in _read_csv(data_dir, "record_types")] == ["customer"]
+    fields = _read_csv(data_dir, "fields")
+    assert {f["field_name"] for f in fields} == {"id", "balance"}
+    balance = next(f for f in fields if f["field_name"] == "balance")
+    assert balance["type"] == "number"  # "null" stripped from the type list end-to-end
+    assert balance["nullable"] == "True"
+    assert next(f for f in fields if f["field_name"] == "id")["nullable"] == ""  # None -> empty cell
+
+
 def test_bad_config_missing_mode_raises_user_exception(tmp_path):
     params = {**CONNECTION}  # no mode
     data_dir = _make_datadir(tmp_path, params)

@@ -244,12 +244,27 @@ class RestletRow(BaseRow):
         return self
 
 
+class MetadataRow(BaseRow):
+    """``metadata`` mode: dump NetSuite's schema catalog (record types + their field definitions).
+
+    Takes no user input — it lists every record type from the metadata catalog and fetches each
+    type's field definitions. Being a schema *snapshot*, it defaults to ``full_load`` (a full rewrite)
+    rather than the incremental default of the data modes; the schema hides Load Type for this mode so
+    it stays a rewrite (an upsert would leave stale field rows behind when a type/field disappears).
+    ``output_table_name`` / ``primary_key`` from BaseRow are unused: the extractor always writes the
+    fixed ``record_types`` / ``fields`` tables with their own primary keys.
+    """
+
+    mode: Literal["metadata"]
+    load_type: LoadType = LoadType.full_load
+
+
 Row = Annotated[
-    RecordRow | SuiteQLRow | SavedSearchRow | RestletRow,
+    RecordRow | SuiteQLRow | SavedSearchRow | RestletRow | MetadataRow,
     Field(discriminator="mode"),
 ]
 
-_ROW_ADAPTER: TypeAdapter[RecordRow | SuiteQLRow | SavedSearchRow | RestletRow] = TypeAdapter(Row)
+_ROW_ADAPTER: TypeAdapter[RecordRow | SuiteQLRow | SavedSearchRow | RestletRow | MetadataRow] = TypeAdapter(Row)
 
 
 class Configuration:
@@ -266,7 +281,7 @@ class Configuration:
         self._raw: dict[str, Any] = dict(data)
         try:
             self.connection = Connection(**data)
-            self.row: RecordRow | SuiteQLRow | SavedSearchRow | RestletRow | None = None
+            self.row: RecordRow | SuiteQLRow | SavedSearchRow | RestletRow | MetadataRow | None = None
             if data.get("mode") is not None:
                 self.row = _ROW_ADAPTER.validate_python(data)
         except ValidationError as e:
@@ -276,7 +291,7 @@ class Configuration:
             # otherwise print. error_messages above already gives a clear, secret-free message.
             raise UserException(f"Validation Error: {', '.join(error_messages)}") from None
 
-    def validate_for_run(self) -> RecordRow | SuiteQLRow | SavedSearchRow | RestletRow:
+    def validate_for_run(self) -> RecordRow | SuiteQLRow | SavedSearchRow | RestletRow | MetadataRow:
         """Re-validate the row for an actual run, enforcing required-field and incremental rules.
 
         Returns the validated row. Raises :class:`UserException` when ``mode`` is absent or a
