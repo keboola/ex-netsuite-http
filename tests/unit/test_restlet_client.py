@@ -104,13 +104,18 @@ def test_post_with_body():
 
 
 @responses.activate
-def test_error_response_surfaced_with_status_and_body():
-    responses.add(responses.GET, RESTLET_URL, status=400, json={"error": "bad script"})
+def test_error_reports_status_without_body():
+    # The RESTlet error body can carry arbitrary customer data (the script's own error text, echoed
+    # field values), so it is never put into the user-facing message; only the status code and the
+    # request path are reported.
+    responses.add(responses.GET, RESTLET_URL, status=400, json={"error": "bad script for admin@acme.com"})
     client = _client()
     with pytest.raises(UserException) as exc:
         client.call("123", "1")
-    assert "400" in str(exc.value)
-    assert "bad script" in str(exc.value)
+    msg = str(exc.value)
+    assert "400" in msg
+    assert "bad script" not in msg
+    assert "admin@acme.com" not in msg
 
 
 @responses.activate

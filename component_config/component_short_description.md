@@ -1,1 +1,1 @@
-Extracts records, SuiteQL query results, saved searches, and RESTlet responses from NetSuite.
+Extracts NetSuite data over its HTTP APIs: records, SuiteQL, saved searches, RESTlets, and schema metadata.

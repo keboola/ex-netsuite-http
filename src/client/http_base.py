@@ -61,7 +61,6 @@ class SignedHttpClient:
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | list[Any] | None = None,
         extra_headers: dict[str, str] | None = None,
-        surface_body: bool = False,
     ) -> requests.Response:
         params = {k: str(v) for k, v in (params or {}).items()}
         attempt = 0
@@ -89,19 +88,20 @@ class SignedHttpClient:
                     ) from exc
                 self._sleep_on_network_error(exc, attempt)
                 continue
+            # The response body is never logged or put into an exception message: it can carry
+            # arbitrary customer data (a RESTlet's own error text, echoed field values), which a
+            # pattern-based scrub cannot fully redact. Errors report only the status code and request
+            # path; the exception type (NetSuiteResourceError vs UserException) carries the rest.
             if response.status_code == 401:
-                logging.debug("Auth/permission failure body: %s", response.text[:500])
                 raise UserException(
                     "NetSuite authentication/permission failed (401). Check the account id, TBA "
                     "credentials and role permissions."
                 )
-            if response.status_code in (403, 404) and not surface_body:
+            if response.status_code in (403, 404):
                 # A scoped per-resource failure: the account authenticated (401 is handled above) but
                 # this role may not read this resource (403) or it does not exist (404). Raised as a
                 # distinct type so the metadata per-type walk can skip one inaccessible record type,
                 # while every other caller still aborts (NetSuiteResourceError is a UserException).
-                # RESTlet calls pass surface_body=True and keep the existing body-in-message path below.
-                logging.debug("Resource unavailable body (%s): %s", response.status_code, response.text[:500])
                 raise NetSuiteResourceError(
                     f"NetSuite request to {urlsplit(url).path} was denied or not found "
                     f"({response.status_code}). Check the account id, TBA credentials and this role's "
@@ -118,12 +118,7 @@ class SignedHttpClient:
                 self._sleep_before_retry(response, attempt)
                 continue
             if not response.ok:
-                logging.debug("Failed response body (%s): %s", response.status_code, response.text[:500])
-                message = f"NetSuite request to {urlsplit(url).path} failed ({response.status_code})."
-                # RESTlet errors are surfaced with body (spec §4); REST/SuiteQL keep the message plain.
-                if surface_body:
-                    message = f"{message} Response: {response.text[:500]}"
-                raise UserException(message)
+                raise UserException(f"NetSuite request to {urlsplit(url).path} failed ({response.status_code}).")
             return response
 
     def _backoff_delay(self, attempt: int) -> float:
