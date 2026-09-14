@@ -159,6 +159,16 @@ def test_list_saved_searches(tmp_path):
     assert result[0].label == "My Search"
 
 
+def test_list_saved_searches_scoped_to_record_type(tmp_path):
+    # SYNC-1: the dropdown must query getSavedSearch for the row's record type, not always the
+    # Transaction default. "Customer" maps to the SearchRecordType enum value "customer".
+    comp = _component(tmp_path, {**CONNECTION, "mode": "saved_search", "search_record_type": "Customer"})
+    with mock.patch.object(SoapClient, "list_saved_searches", return_value=[]) as m:
+        comp.list_saved_searches()
+    passed = m.call_args.args[0] if m.call_args.args else m.call_args.kwargs.get("search_type")
+    assert passed == "customer"
+
+
 def test_validate_suiteql_ok(tmp_path):
     comp = _component(tmp_path, {**CONNECTION, "mode": "suiteql", "query": "SELECT id FROM customer"})
     with mock.patch.object(RestClient, "suiteql_page", return_value={"items": []}) as page:

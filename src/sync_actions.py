@@ -20,8 +20,16 @@ from client.auth import TBASigner
 from client.rest import RestClient
 from client.restlet import RestletClient
 from client.soap import SoapClient
-from configuration import Configuration, RecordRow, RestletRow, SuiteQLRow
+from configuration import Configuration, RecordRow, RestletRow, SavedSearchRow, SuiteQLRow
 from extractor.suiteql import substitute_probe_dates
+
+
+def _saved_search_type(row_value: str) -> str:
+    """Map a row's ``search_record_type`` (SearchAdvanced-style, capitalized e.g. "Transaction") to
+    the ``SearchRecordType`` enum value ``getSavedSearch`` expects (lower camelCase e.g.
+    "transaction"). Empty falls back to the endpoint default.
+    """
+    return row_value[:1].lower() + row_value[1:] if row_value else "transaction"
 
 
 class SyncActionsMixin:
@@ -99,8 +107,15 @@ class SyncActionsMixin:
 
     @sync_action("listSavedSearches")
     def list_saved_searches(self) -> list[SelectElement]:
-        """Populate the saved_search_id dropdown via SOAP."""
-        searches = self._soap_client().list_saved_searches()
+        """Populate the saved_search_id dropdown via SOAP, scoped to the row's record type.
+
+        ``getSavedSearch`` is scoped strictly to one ``SearchRecordType``, so the dropdown must query
+        the record type the row targets. Otherwise only the default (Transaction) saved searches ever
+        appear and a Customer/Item/... saved search cannot be selected — the field is not creatable.
+        """
+        row = self.params.row
+        search_type = _saved_search_type(row.search_record_type) if isinstance(row, SavedSearchRow) else "transaction"
+        searches = self._soap_client().list_saved_searches(search_type)
         elements = []
         for search in searches:
             value = search.get("scriptId") or search.get("internalId") or search.get("name")

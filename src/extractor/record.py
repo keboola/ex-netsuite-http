@@ -12,6 +12,7 @@ wired pending sandbox coverage and user sign-off.
 import json
 import logging
 import re
+from collections.abc import Iterable, Iterator
 from typing import Any
 
 from keboola.component.exceptions import UserException
@@ -24,6 +25,7 @@ from extractor.base import (
     OutputTable,
     collect_columns,
     infer_column_types,
+    resolve_stream_schema,
 )
 
 # Candidate per-line identifier columns used to form a child-table composite PK, in priority order.
@@ -85,9 +87,9 @@ class RecordExtractor(Extractor):
 
     # ---- fetch -----------------------------------------------------------
 
-    def _fetch_records(self, q: str | None) -> list[dict[str, Any]]:
-        """Fetch the full records eagerly (no state exists post-overhaul; the eager fetch just
-        surfaces a fetch failure before any output table is written).
+    def _fetch_records(self, q: str | None) -> Iterator[dict[str, Any]]:
+        """Yield records from the collection lazily, so a large record type is never fully held in
+        memory (the flatten path streams these straight to the writer, matching the other modes).
 
         The REST record collection is ID-only (spec §9 risk 5): it returns ids + HATEOAS links, no
         field values or sublists, and supports no server-side field projection. So every record is
@@ -99,14 +101,12 @@ class RecordExtractor(Extractor):
             q=q,
             limit=self.row.page_limit,
         )
-        records: list[dict[str, Any]] = []
         for item in collection:
             record_id = item.get("id")
             if record_id is None:
-                records.append(item)
+                yield item
                 continue
-            records.append(self.rest_client.get_record(self.row.record_type, str(record_id), expand_sub_resources=True))
-        return records
+            yield self.rest_client.get_record(self.row.record_type, str(record_id), expand_sub_resources=True)
 
     # ---- filter ----------------------------------------------------------
 
@@ -135,18 +135,21 @@ class RecordExtractor(Extractor):
 
     # ---- sublist handling ------------------------------------------------
 
-    def _flatten_table(self, records: Any, table_name: str) -> OutputTable:
-        rows = list(self._flatten_rows(records))
+    def _flatten_table(self, records: Iterable[dict[str, Any]], table_name: str) -> OutputTable:
+        # Stream the flattened rows to the writer instead of materializing them (a large record type
+        # would OOM); the column union + native types are resolved from a bounded head sample, the
+        # same way suiteql/saved_search/restlet do via resolve_stream_schema.
+        stream, columns, column_types = resolve_stream_schema(self._flatten_rows(records))
         return OutputTable(
             name=table_name,
-            rows=rows,
+            rows=stream,
             primary_key=self.row.primary_key,
             incremental=self.row.incremental,
-            columns=collect_columns(rows) or None,
-            column_types=infer_column_types(rows) or None,
+            columns=columns,
+            column_types=column_types,
         )
 
-    def _flatten_rows(self, records: Any):
+    def _flatten_rows(self, records: Iterable[dict[str, Any]]) -> Iterator[dict[str, Any]]:
         for record in records:
             row = {}
             for key, value in self._project(record).items():
@@ -156,8 +159,9 @@ class RecordExtractor(Extractor):
                     row[key] = value
             yield row
 
-    def _split_child_tables(self, records: Any, table_name: str) -> list[OutputTable]:
-        # Child tables are streamed together, so materialize once and fan out.
+    def _split_child_tables(self, records: Iterable[dict[str, Any]], table_name: str) -> list[OutputTable]:
+        # Child tables are fanned out from one pass, so this path materializes the records (unlike the
+        # flatten path, which streams): parent rows and every child table are built together.
         parent_rows: list[dict[str, Any]] = []
         child_rows: dict[str, list[dict[str, Any]]] = {}
         fields = self.row.fields

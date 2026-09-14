@@ -7,9 +7,12 @@ Produces two fixed output tables:
   type*, so a run issues as many calls as the account has record types (hundreds) and is API-heavy.
 
 The initial catalog call is the auth/connection gate and is left unguarded — a failure there aborts
-the run with a clear message. Per-type schema calls are guarded: one record type that 404s or is not
-permitted is logged and skipped so the dump still completes. The ``fields`` rows are yielded lazily
-(one type fetched at a time) so the whole catalog is never held in memory at once.
+the run with a clear message. Per-type schema calls are guarded only against a *scoped* failure: a
+record type that 404s or is not permitted (403) is logged and skipped so the dump still completes. A
+*systemic* failure (401 auth, exhausted transient retries, network) is not a
+:class:`NetSuiteResourceError`, so it propagates and aborts the run instead of silently producing a
+near-empty ``fields`` table. The ``fields`` rows are yielded lazily (one type fetched at a time) so
+the whole catalog is never held in memory at once.
 """
 
 import json
@@ -17,6 +20,7 @@ import logging
 from collections.abc import Iterator
 from typing import Any
 
+from client.http_base import NetSuiteResourceError
 from client.rest import RestClient
 from configuration import MetadataRow
 from extractor.base import ExtractionResult, Extractor, OutputTable
@@ -70,14 +74,16 @@ class MetadataExtractor(Extractor):
     def _iter_field_rows(self, record_type_names: list[str]) -> Iterator[dict[str, Any]]:
         """Yield one row per (record type, field), fetching each type's schema lazily.
 
-        A per-type fetch failure is logged and skipped — one inaccessible record type must not abort
-        the whole dump (the auth gate already passed on the catalog call).
+        A scoped per-type failure (403 not permitted / 404 not found) is logged and skipped — one
+        inaccessible record type must not abort the whole dump (the auth gate already passed on the
+        catalog call). A systemic failure (401 auth, exhausted retries, network) is not caught here,
+        so it propagates and aborts the run rather than yielding a near-empty ``fields`` table.
         """
         total = len(record_type_names)
         for index, record_type in enumerate(record_type_names, start=1):
             try:
                 schema = self.rest_client.get_metadata_catalog(record_type)
-            except Exception as exc:  # noqa: BLE001 — skip this type, keep dumping the rest
+            except NetSuiteResourceError as exc:
                 logging.warning("Skipping fields for record type '%s': %s", record_type, exc)
                 continue
             for field_name, definition in (schema.get("properties", {}) or {}).items():

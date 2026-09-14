@@ -2,8 +2,10 @@
 
 Both surfaces authenticate identically (RFC 5849 ``Authorization`` header, fresh per request) and
 share the same retry policy, so that lives here once: ``429`` honours ``Retry-After`` when present
-else exponential backoff with jitter; transient ``5xx`` uses backoff; ``401``/``403`` surface as
-:class:`UserException`. SOAP is intentionally separate (it uses zeep + a TokenPassport header).
+else exponential backoff with jitter; transient ``5xx`` uses backoff. A ``401`` is a systemic auth
+failure (:class:`UserException`); a ``403``/``404`` is a scoped per-resource failure
+(:class:`NetSuiteResourceError`); any other non-2xx raises :class:`UserException`. SOAP is
+intentionally separate (it uses zeep + a TokenPassport header).
 """
 
 import logging
@@ -21,6 +23,19 @@ from client.auth import Signer
 
 # Transient HTTP statuses worth retrying (429 is handled separately for Retry-After).
 _RETRYABLE = {500, 502, 503, 504}
+
+
+class NetSuiteResourceError(UserException):
+    """A scoped, per-resource HTTP failure: ``404`` (resource not found) or ``403`` (this role may
+    not read this resource). A :class:`UserException` subclass, so a caller that does not catch it
+    still aborts with a clean message; the metadata walk catches it to skip one inaccessible record
+    type, while a systemic failure (``401`` auth, exhausted transient retries, network) stays a plain
+    :class:`UserException` and aborts the whole run.
+    """
+
+    def __init__(self, message: str, status_code: int):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class SignedHttpClient:
@@ -74,11 +89,24 @@ class SignedHttpClient:
                     ) from exc
                 self._sleep_on_network_error(exc, attempt)
                 continue
-            if response.status_code in (401, 403):
+            if response.status_code == 401:
                 logging.debug("Auth/permission failure body: %s", response.text[:500])
                 raise UserException(
-                    f"NetSuite authentication/permission failed ({response.status_code}). "
-                    "Check the account id, TBA credentials and role permissions."
+                    "NetSuite authentication/permission failed (401). Check the account id, TBA "
+                    "credentials and role permissions."
+                )
+            if response.status_code in (403, 404) and not surface_body:
+                # A scoped per-resource failure: the account authenticated (401 is handled above) but
+                # this role may not read this resource (403) or it does not exist (404). Raised as a
+                # distinct type so the metadata per-type walk can skip one inaccessible record type,
+                # while every other caller still aborts (NetSuiteResourceError is a UserException).
+                # RESTlet calls pass surface_body=True and keep the existing body-in-message path below.
+                logging.debug("Resource unavailable body (%s): %s", response.status_code, response.text[:500])
+                raise NetSuiteResourceError(
+                    f"NetSuite request to {urlsplit(url).path} was denied or not found "
+                    f"({response.status_code}). Check the account id, TBA credentials and this role's "
+                    "permission for the resource.",
+                    status_code=response.status_code,
                 )
             if response.status_code == 429 or response.status_code in _RETRYABLE:
                 attempt += 1

@@ -14,6 +14,7 @@ from unittest import mock
 import pytest
 from keboola.component.exceptions import UserException
 
+from client.http_base import NetSuiteResourceError
 from configuration import MetadataRow
 from extractor.metadata import MetadataExtractor
 
@@ -55,7 +56,8 @@ def _client(catalog, schemas, failing=()):
         if record_type is None:
             return catalog
         if record_type in failing:
-            raise RuntimeError(f"boom for {record_type}")
+            # A scoped per-type failure (403 not permitted / 404 not found): the extractor skips it.
+            raise NetSuiteResourceError(f"boom for {record_type}", status_code=404)
         return schemas[record_type]
 
     client.get_metadata_catalog.side_effect = fake_catalog
@@ -135,6 +137,23 @@ def test_per_type_failure_is_skipped_and_warned(caplog):
     assert any("invoice" in rec.message for rec in caplog.records)
     # the record_types table still lists both — it comes from the catalog, not the per-type calls
     assert {r["name"] for r in _table(result, "record_types").rows} == {"customer", "invoice"}
+
+
+def test_per_type_systemic_failure_aborts_run():
+    # A systemic failure mid-walk (revoked credentials, outage, exhausted retries) is NOT a
+    # NetSuiteResourceError, so it must propagate and abort the run — unlike a per-type 403/404, which
+    # is skipped. Otherwise the fields table would come out near-empty while the job reports success.
+    client = mock.Mock()
+
+    def fake_catalog(record_type=None):
+        if record_type is None:
+            return CATALOG
+        raise UserException("NetSuite authentication failed (401).")
+
+    client.get_metadata_catalog.side_effect = fake_catalog
+    result = MetadataExtractor(row=_row(), rest_client=client).extract()
+    with pytest.raises(UserException, match="401"):
+        list(_table(result, "fields").rows)  # the systemic failure fires as the stream is consumed
 
 
 def test_snapshot_is_full_load_on_both_tables():
