@@ -244,12 +244,41 @@ class RestletRow(BaseRow):
         return self
 
 
+class MetadataRow(BaseRow):
+    """``metadata`` mode: dump NetSuite's schema catalog (record types + their field definitions).
+
+    Takes no user input — it lists every record type from the metadata catalog and fetches each
+    type's field definitions. Being a schema *snapshot*, it is always a full rewrite (an upsert would
+    leave stale field rows behind when a type/field disappears); the schema hides Load Type, Primary
+    Key and Output Table Name for this mode, and the extractor always writes the fixed
+    ``record_types`` / ``fields`` tables with their own primary keys.
+    """
+
+    mode: Literal["metadata"]
+    load_type: LoadType = LoadType.full_load
+
+    @model_validator(mode="before")
+    @classmethod
+    def _neutralize_stale_data_mode_fields(cls, data: Any) -> Any:
+        # The data modes' row fields don't apply to a snapshot, but a config can still CARRY them —
+        # most often when an existing row (e.g. a SuiteQL row defaulting to incremental_load) is
+        # switched to metadata: the schema hides load_type/primary_key/output_table_name but does not
+        # strip them from the saved JSON. Force them to snapshot-safe values BEFORE validation so a
+        # stale incremental_load can't demand a primary key or emit incremental manifests, and a stale
+        # invalid output_table_name can't fail an otherwise field-less run. `mode="before"` matters:
+        # it runs ahead of BaseRow's incremental+PK / output_table_name guards, which see the cleaned
+        # values.
+        if isinstance(data, dict):
+            data = {**data, "load_type": LoadType.full_load.value, "primary_key": [], "output_table_name": ""}
+        return data
+
+
 Row = Annotated[
-    RecordRow | SuiteQLRow | SavedSearchRow | RestletRow,
+    RecordRow | SuiteQLRow | SavedSearchRow | RestletRow | MetadataRow,
     Field(discriminator="mode"),
 ]
 
-_ROW_ADAPTER: TypeAdapter[RecordRow | SuiteQLRow | SavedSearchRow | RestletRow] = TypeAdapter(Row)
+_ROW_ADAPTER: TypeAdapter[RecordRow | SuiteQLRow | SavedSearchRow | RestletRow | MetadataRow] = TypeAdapter(Row)
 
 
 class Configuration:
@@ -266,7 +295,7 @@ class Configuration:
         self._raw: dict[str, Any] = dict(data)
         try:
             self.connection = Connection(**data)
-            self.row: RecordRow | SuiteQLRow | SavedSearchRow | RestletRow | None = None
+            self.row: RecordRow | SuiteQLRow | SavedSearchRow | RestletRow | MetadataRow | None = None
             if data.get("mode") is not None:
                 self.row = _ROW_ADAPTER.validate_python(data)
         except ValidationError as e:
@@ -276,7 +305,7 @@ class Configuration:
             # otherwise print. error_messages above already gives a clear, secret-free message.
             raise UserException(f"Validation Error: {', '.join(error_messages)}") from None
 
-    def validate_for_run(self) -> RecordRow | SuiteQLRow | SavedSearchRow | RestletRow:
+    def validate_for_run(self) -> RecordRow | SuiteQLRow | SavedSearchRow | RestletRow | MetadataRow:
         """Re-validate the row for an actual run, enforcing required-field and incremental rules.
 
         Returns the validated row. Raises :class:`UserException` when ``mode`` is absent or a

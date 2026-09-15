@@ -82,10 +82,13 @@ def test_marker_pagination_two_pages():
 
 
 @responses.activate
-def test_error_response_surfaced_with_status_and_body():
+def test_error_reports_status_without_body():
+    # The RESTlet error body can carry arbitrary customer data, so it is never put into the
+    # user-facing message; only the status code (and request path) are reported.
     responses.add(responses.GET, _RESTLET_URL, json=_fixture("restlet_error.json"), status=400)
     ext = _extractor(method="GET", record_path="data.results", load_type="full_load")
     with pytest.raises(UserException) as exc:
         list(ext.extract().tables[0].rows)
-    assert "400" in str(exc.value)
-    assert "unknown script parameter" in str(exc.value)
+    msg = str(exc.value)
+    assert "400" in msg
+    assert "unknown script parameter" not in msg

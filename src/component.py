@@ -24,8 +24,9 @@ from client.auth import TBASigner
 from client.rest import RestClient
 from client.restlet import RestletClient
 from client.soap import SoapClient
-from configuration import Configuration, RecordRow, RestletRow, SavedSearchRow, SuiteQLRow
+from configuration import Configuration, MetadataRow, RecordRow, RestletRow, SavedSearchRow, SuiteQLRow
 from extractor.base import ExtractionResult, Extractor, OutputTable
+from extractor.metadata import MetadataExtractor
 from extractor.record import RecordExtractor
 from extractor.restlet import RestletExtractor
 from extractor.saved_search import SavedSearchExtractor
@@ -142,7 +143,7 @@ class Component(SyncActionsMixin, ComponentBase):
 
     def _select_extractor(
         self,
-        row: RecordRow | SuiteQLRow | SavedSearchRow | RestletRow,
+        row: RecordRow | SuiteQLRow | SavedSearchRow | RestletRow | MetadataRow,
         signer: TBASigner,
         rest_client: RestClient,
     ) -> Extractor:
@@ -154,6 +155,8 @@ class Component(SyncActionsMixin, ComponentBase):
             return SavedSearchExtractor(row, SoapClient(signer))
         if isinstance(row, RestletRow):
             return RestletExtractor(row, RestletClient(signer))
+        if isinstance(row, MetadataRow):
+            return MetadataExtractor(row, rest_client)
         raise UserException(f"Unsupported mode: {getattr(row, 'mode', None)}")
 
     # ---- output ----------------------------------------------------------

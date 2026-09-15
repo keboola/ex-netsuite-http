@@ -36,7 +36,7 @@ class RestletClient(SignedHttpClient):
         params: dict[str, Any] = {"script": script_id, "deploy": deploy_id}
         if query_params:
             params.update(query_params)
-        response = self._signed_request(method.upper(), self._url, params=params, json_body=body, surface_body=True)
+        response = self._signed_request(method.upper(), self._url, params=params, json_body=body)
         # A deployed RESTlet can return HTML (a gateway/maintenance page) or an empty body on a 2xx;
         # an unguarded response.json() would then crash the job as an exit-2 system error instead of
         # a user-facing message (mirrors rest._json).

@@ -23,6 +23,7 @@ the component decides internally whether to call REST or SOAP:
 | `suiteql`      | REST SuiteQL         | Run an arbitrary SuiteQL query, with an optional date range substituted into the query.               |
 | `saved_search` | SuiteTalk SOAP       | Execute an existing saved search (`customsearch_*`), paging with `searchMoreWithId`.                  |
 | `restlet`      | Custom RESTlet       | Call a deployed RESTlet (GET/POST/PUT/DELETE) and map rows from its JSON response.                    |
+| `metadata`     | REST metadata catalog| Dump the schema catalog: every record type + their field definitions into two tables.                 |
 
 Load Type is purely the Storage write mode: **full load** rewrites the whole table each run;
 **incremental load** upserts the fetched rows on the primary key (so rows not in the current batch
@@ -123,6 +124,18 @@ Mode `restlet`:
 | `request_body`            | `""`    | Optional JSON request body for POST/PUT. Must be valid JSON.                    |
 | `record_path`             | `""`    | Dotted path to the rows in the response (e.g. `data.results`). Empty = top level. |
 | `pagination_cursor_field` | `""`    | Optional response field holding the next-page cursor.                          |
+
+Mode `metadata`:
+
+Takes no fields — it dumps the whole schema catalog. Load Type, Output Table Name and Primary Key do
+not apply (the extractor always writes a full snapshot into two fixed tables). It issues one metadata
+call per record type, so a run is API-heavy (a few hundred calls); one record type that is not
+accessible is logged and skipped rather than failing the run. Output:
+
+| Table          | Columns                                                                        | Primary key                 |
+|----------------|--------------------------------------------------------------------------------|-----------------------------|
+| `record_types` | `name`, `href`                                                                 | `name`                      |
+| `fields`       | `record_type`, `field_name`, `type`, `title`, `format`, `nullable`, `enum`, `definition` (raw JSON of the full property) | `record_type` + `field_name` |
 
 Sync actions
 ============
