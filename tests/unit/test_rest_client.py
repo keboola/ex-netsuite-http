@@ -59,12 +59,41 @@ def test_suiteql_paginates_until_has_more_false():
         status=200,
     )
     client = _client()
-    rows = list(client.iter_suiteql("SELECT id FROM customer", limit=2))
+    rows = list(client.iter_suiteql("SELECT id FROM customer ORDER BY id", limit=2))
     assert [r["id"] for r in rows] == ["1", "2", "3"]
     assert len(responses.calls) == 2
     # Each SuiteQL page must be signed freshly (unique nonce per page).
     nonces = [call.request.headers["Authorization"] for call in responses.calls]
     assert nonces[0] != nonces[1]
+
+
+@responses.activate
+def test_suiteql_multipage_without_order_by_fails_before_yielding():
+    # Offset paging without a stable ORDER BY silently skips/duplicates rows across pages, so a
+    # multi-page result must fail loudly before any row is yielded and before page 2 is requested.
+    responses.add(responses.POST, SUITEQL_URL, json={"items": [{"id": "1"}], "hasMore": True}, status=200)
+    client = _client()
+    with pytest.raises(UserException, match="ORDER BY"):
+        list(client.iter_suiteql("SELECT id FROM customer", limit=1))
+    assert len(responses.calls) == 1  # page 2 was never requested
+
+
+@responses.activate
+def test_suiteql_single_page_without_order_by_is_fine():
+    # A result that fits in one page cannot be reordered across pages, so no ORDER BY is needed.
+    responses.add(responses.POST, SUITEQL_URL, json={"items": [{"id": "1"}], "hasMore": False}, status=200)
+    client = _client()
+    assert [r["id"] for r in client.iter_suiteql("SELECT id FROM customer")] == ["1"]
+
+
+@responses.activate
+def test_suiteql_order_by_only_in_subquery_still_fails():
+    # An ORDER BY inside a subquery does not order the outer result; only a top-level one counts.
+    responses.add(responses.POST, SUITEQL_URL, json={"items": [{"id": "1"}], "hasMore": True}, status=200)
+    client = _client()
+    query = "SELECT id FROM customer WHERE id IN (SELECT id FROM customer ORDER BY id)"
+    with pytest.raises(UserException, match="ORDER BY"):
+        list(client.iter_suiteql(query, limit=1))
 
 
 @responses.activate
