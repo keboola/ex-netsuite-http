@@ -11,6 +11,12 @@
     {
       "level": "INFO",
       "logger": "root",
+      "message": "Loading state file..",
+      "timestamp": "2026-07-21T12:54:40.548Z"
+    },
+    {
+      "level": "INFO",
+      "logger": "root",
       "message": "Wrote 5 rows to table 'suiteql_typed'.",
       "timestamp": "2026-07-21T12:54:40.548Z"
     }

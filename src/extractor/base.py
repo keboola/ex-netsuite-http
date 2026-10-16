@@ -98,8 +98,9 @@ def resolve_stream_schema(
     whole result. An empty result yields an empty stream and no schema (the writer then falls back to
     the configured primary key).
 
-    Residual: a column that is null across the entire sampled head but populated only later is still
-    dropped; ``SCHEMA_SAMPLE_SIZE`` is sized to a full page to make that vanishingly unlikely.
+    Residual: a column that is null across the entire sampled head is dropped from this run's table.
+    ``component.py`` keeps the columns of earlier runs in the state file, so this only affects a
+    column the table has never had.
     """
     iterator = iter(rows)
     head = list(itertools.islice(iterator, SCHEMA_SAMPLE_SIZE))

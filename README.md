@@ -31,6 +31,8 @@ are kept). There is no state-file watermark — bound the data you pull with the
 the record `q` filter, or the saved search definition itself. Output manifests carry native column
 types (integer/numeric/boolean/string) inferred from the fetched data.
 
+NetSuite leaves out null fields, so a column that is null in every row of a run would be missing from that run's data. The state file of each row keeps the columns (and their types) written by earlier runs, and every run writes them all, so a load never misses a column of the existing Storage table.
+
 Prerequisites — NetSuite Token-Based Authentication (TBA)
 =========================================================
 
