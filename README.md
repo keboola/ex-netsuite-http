@@ -107,6 +107,8 @@ Mode `suiteql`:
 A single range is issued as-is (no automatic chunking); narrow a range that would exceed NetSuite's
 ~100k-row SuiteQL result ceiling.
 
+NetSuite returns every SuiteQL value as text: dates in the date format of the NetSuite user, booleans as `T`/`F`. The output columns are therefore strings. To get ISO dates, convert them in the query, e.g. `TO_CHAR(trandate, 'YYYY-MM-DD') AS trandate`, or `TO_CHAR(lastmodifieddate, 'YYYY-MM-DD"T"HH24:MI:SS') AS lastmodifieddate` for a date with time.
+
 Mode `saved_search`:
 
 | Field                | Default       | Description                                                                                    |

@@ -114,7 +114,7 @@
         "editor": {
           "mode": "text/x-sql"
         },
-        "tooltip": "A [SuiteQL](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156257770590.html) query. To filter by the date range below, put the `:date_from` and `:date_to` placeholders in the WHERE clause, e.g. `WHERE lastmodifieddate BETWEEN :date_from AND :date_to`. A single range is issued as-is (no automatic chunking), so narrow the range if it would exceed NetSuite's ~100k-row SuiteQL result ceiling."
+        "tooltip": "A [SuiteQL](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156257770590.html) query. To filter by the date range below, put the `:date_from` and `:date_to` placeholders in the WHERE clause, e.g. `WHERE lastmodifieddate BETWEEN :date_from AND :date_to`. A single range is issued as-is (no automatic chunking), so narrow the range if it would exceed NetSuite's ~100k-row SuiteQL result ceiling. NetSuite returns every value as text, with dates in the date format of the NetSuite user; use e.g. `TO_CHAR(trandate, 'YYYY-MM-DD') AS trandate` to get ISO dates."
       },
       "propertyOrder": 20
     },
