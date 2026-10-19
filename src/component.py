@@ -185,6 +185,7 @@ class Component(SyncActionsMixin, ComponentBase):
             buffered = list(rows_iter)
             columns = self._collect_columns(buffered)
             rows_iter = iter(buffered)
+        data_columns = columns
 
         # Columns from earlier runs come first and keep their type: the Storage table already has them.
         columns = list(previous_columns) + [col for col in columns if col not in previous_columns]
@@ -205,12 +206,14 @@ class Component(SyncActionsMixin, ComponentBase):
 
         # A primary key that names a column the extraction did not return would fail opaquely at
         # Storage import; surface it here naming the missing and available columns (mirrors the
-        # incremental+PK guard in configuration.py).
-        missing = [pk for pk in table.primary_key if pk not in columns]
-        if missing:
+        # incremental+PK guard in configuration.py). Check the data, not the columns kept from earlier
+        # runs: a key column the query stopped returning would be written empty in every row. A 0-row
+        # run has no data columns to check.
+        missing = [pk for pk in table.primary_key if pk not in data_columns]
+        if data_columns and missing:
             raise UserException(
                 f"Table '{table.name}': primary key column(s) {missing} are not among the extracted "
-                f"columns {columns}. Set 'primary_key' to column(s) the extraction actually returns."
+                f"columns {data_columns}. Set 'primary_key' to column(s) the extraction actually returns."
             )
 
         table_def = self.create_out_table_definition(
