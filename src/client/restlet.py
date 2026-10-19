@@ -36,7 +36,16 @@ class RestletClient(SignedHttpClient):
         params: dict[str, Any] = {"script": script_id, "deploy": deploy_id}
         if query_params:
             params.update(query_params)
-        response = self._signed_request(method.upper(), self._url, params=params, json_body=body)
+        # NetSuite serializes a RESTlet's return value only when the request declares a JSON
+        # Content-Type — on GET too, where requests would otherwise send no Content-Type at all.
+        # Without it the account answers INVALID_RETURN_DATA_FORMAT (a 400) for every script.
+        response = self._signed_request(
+            method.upper(),
+            self._url,
+            params=params,
+            json_body=body,
+            extra_headers={"Content-Type": "application/json", "Accept": "application/json"},
+        )
         # A deployed RESTlet can return HTML (a gateway/maintenance page) or an empty body on a 2xx;
         # an unguarded response.json() would then crash the job as an exit-2 system error instead of
         # a user-facing message (mirrors rest._json).

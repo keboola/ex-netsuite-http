@@ -31,6 +31,8 @@ are kept). There is no state-file watermark — bound the data you pull with the
 the record `q` filter, or the saved search definition itself. Output manifests carry native column
 types (integer/numeric/boolean/string) inferred from the fetched data.
 
+NetSuite leaves out null fields, so a column that is null in every row of a run would be missing from that run's data. The state file of each row keeps the columns (and their types) written by earlier runs, and every run writes them all, so a load never misses a column of the existing Storage table.
+
 Prerequisites — NetSuite Token-Based Authentication (TBA)
 =========================================================
 
@@ -104,6 +106,8 @@ Mode `suiteql`:
 
 A single range is issued as-is (no automatic chunking); narrow a range that would exceed NetSuite's
 ~100k-row SuiteQL result ceiling.
+
+NetSuite returns every SuiteQL value as text: dates in the date format of the NetSuite user, booleans as `T`/`F`. The output columns are therefore strings. To get ISO dates, convert them in the query, e.g. `TO_CHAR(trandate, 'YYYY-MM-DD') AS trandate`, or `TO_CHAR(lastmodifieddate, 'YYYY-MM-DD"T"HH24:MI:SS') AS lastmodifieddate` for a date with time.
 
 Mode `saved_search`:
 

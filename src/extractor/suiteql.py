@@ -4,7 +4,8 @@ Runs the user's query with ``hasMore`` pagination. When the query contains the `
 ``:date_to`` placeholders, the configured date range (parsed with Keboola's dateparser — relative
 strings like "5 days ago" or absolute dates) is substituted into the query before it runs. A single
 range is issued verbatim (no auto sub-chunking); a range that would exceed NetSuite's ~100k SuiteQL
-row ceiling should be narrowed. Typed columns are inferred for the native-types manifest.
+row ceiling should be narrowed. NetSuite returns every SuiteQL value as text (dates in the user's
+date format, booleans as ``T``/``F``), so the inferred column types come out as string.
 """
 
 import logging
@@ -51,7 +52,7 @@ class SuiteQLExtractor(Extractor):
         query = self._bind_dates(self.row.query)
         logging.info("Running SuiteQL query")
         # Stream the paged result straight to the writer instead of materializing it (a ~100k-row
-        # pull would OOM); the column set + native types are resolved from the first row only.
+        # pull would OOM); the column set + native types are resolved from a bounded head of rows.
         stream, columns, column_types = resolve_stream_schema(
             self.rest_client.iter_suiteql(query, limit=self.row.page_limit)
         )

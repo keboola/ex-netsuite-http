@@ -6,6 +6,7 @@ where each page is an independent signed request). Transient failures are retrie
 ``401``/``403`` surface as :class:`UserException` (they are config/permission errors, not transient).
 """
 
+import re
 from collections.abc import Iterator
 from typing import Any
 
@@ -17,6 +18,22 @@ from client.http_base import SignedHttpClient
 _RECORD_PATH = "/services/rest/record/v1"
 _SUITEQL_PATH = "/services/rest/query/v1/suiteql"
 _METADATA_PATH = "/services/rest/record/v1/metadata-catalog"
+
+_ORDER_BY_RE = re.compile(r"\border\s+by\b", re.IGNORECASE)
+_STRING_LITERAL_RE = re.compile(r"'(?:[^']|'')*'")
+
+
+def _has_top_level_order_by(query: str) -> bool:
+    """True when the query has an ``ORDER BY`` outside any parentheses, i.e. not only in a subquery.
+
+    String literals are blanked first so an ``'order by'`` inside a value does not count.
+    """
+    text = _STRING_LITERAL_RE.sub("''", query)
+    for match in _ORDER_BY_RE.finditer(text):
+        prefix = text[: match.start()]
+        if prefix.count("(") == prefix.count(")"):
+            return True
+    return False
 
 
 def _json(response: requests.Response, surface: str) -> dict[str, Any]:
@@ -88,11 +105,25 @@ class RestClient(SignedHttpClient):
         return _json(response, "SuiteQL query")
 
     def iter_suiteql(self, query: str, limit: int = 1000) -> Iterator[dict[str, Any]]:
-        """Yield SuiteQL result rows, paging on ``hasMore`` with a fresh signature per page."""
+        """Yield SuiteQL result rows, paging on ``hasMore`` with a fresh signature per page.
+
+        Offset paging is only stable when the query orders its rows. Without a top-level ``ORDER BY``
+        NetSuite may return the rows in a different order on each page, so some rows are skipped and
+        others duplicated with no error. A result that fits in one page is unaffected. A multi-page
+        result without ``ORDER BY`` therefore fails before any row is yielded, instead of silently
+        losing data.
+        """
         offset = 0
         page_size = min(limit, 1000)
         while True:
             payload = self.suiteql_page(query, limit=page_size, offset=offset)
+            if offset == 0 and payload.get("hasMore") and not _has_top_level_order_by(query):
+                raise UserException(
+                    f"The SuiteQL result has more than {page_size} rows but the query has no ORDER BY. "
+                    "NetSuite's offset paging does not keep a stable row order without it, so rows "
+                    "would be silently skipped or duplicated across pages. Add an ORDER BY on a unique "
+                    "column (for example ORDER BY id) and run again."
+                )
             yield from payload.get("items", [])
             if not payload.get("hasMore"):
                 break

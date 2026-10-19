@@ -26,6 +26,18 @@ def test_call_sends_script_and_deploy_params():
 
 
 @responses.activate
+def test_call_sends_json_content_type_and_accept():
+    # NetSuite serializes a RESTlet's return value only when the request declares a JSON
+    # Content-Type — also on GET, where requests sends none by default. Without it every script
+    # answers INVALID_RETURN_DATA_FORMAT (400), so the headers must always be present.
+    responses.add(responses.GET, RESTLET_URL, json={"rows": []}, status=200)
+    _client().call("123", "1")
+    sent = responses.calls[0].request.headers
+    assert sent["Content-Type"] == "application/json"
+    assert sent["Accept"] == "application/json"
+
+
+@responses.activate
 def test_iter_records_extracts_record_path():
     responses.add(
         responses.GET,

@@ -63,8 +63,8 @@ def test_suiteql_incremental_happy_path(tmp_path):
         _run(data_dir)
     out = _read_csv(data_dir, "customers")
     assert [r["id"] for r in out] == ["1", "2"]
-    # §4: no state file is written anymore.
-    assert not (data_dir / "out" / "state.json").exists()
+    state = json.loads((data_dir / "out" / "state.json").read_text())
+    assert state == {"columns": {"customers": {"id": "string", "name": "string"}}}
 
 
 def test_suiteql_date_range_substituted_into_query(tmp_path):
@@ -103,7 +103,6 @@ def test_record_flatten_happy_path(tmp_path):
         _run(data_dir)
     out = _read_csv(data_dir, "customer")
     assert out[0]["entityid"] == "ACME"
-    assert not (data_dir / "out" / "state.json").exists()
 
 
 def test_restlet_happy_path(tmp_path):
@@ -225,6 +224,58 @@ def test_zero_row_run_writes_header_only_table_and_manifest(tmp_path):
     lines = csv_path.read_text(encoding="utf-8").splitlines()
     assert lines == ["id"]
     assert _read_csv(data_dir, "customers") == []
+
+
+def _suiteql_customers(load_type: str) -> dict:
+    return {
+        **CONNECTION,
+        "mode": "suiteql",
+        "query": "SELECT id, name, email FROM customer",
+        "output_table_name": "customers",
+        "primary_key": ["id"],
+        "load_type": load_type,
+    }
+
+
+def test_column_from_earlier_run_kept_when_null_in_every_row(tmp_path):
+    # NetSuite leaves out null fields: 'email' is null in every row of this run, so the data alone
+    # would drop the column and Storage would reject the load into the existing table.
+    state = {"columns": {"customers": {"id": "string", "email": "string"}, "other": {"x": "integer"}}}
+    data_dir = _make_datadir(tmp_path, _suiteql_customers("incremental_load"), state)
+    rows = [{"id": "1", "name": "ACME"}, {"id": "2", "name": "Globex"}]
+    with mock.patch.object(RestClient, "iter_suiteql", return_value=iter(rows)):
+        _run(data_dir)
+    lines = (data_dir / "out" / "tables" / "customers.csv").read_text(encoding="utf-8").splitlines()
+    assert lines == ["id,email,name", "1,,ACME", "2,,Globex"]
+    manifest = json.loads((data_dir / "out" / "tables" / "customers.csv.manifest").read_text())
+    assert [col["name"] for col in manifest["schema"]] == ["id", "email", "name"]
+    out_state = json.loads((data_dir / "out" / "state.json").read_text())
+    assert out_state == {
+        "columns": {
+            "customers": {"id": "string", "email": "string", "name": "string"},
+            "other": {"x": "integer"},
+        }
+    }
+
+
+def test_column_type_from_earlier_run_wins(tmp_path):
+    # The Storage column already has the type declared by the earlier run.
+    state = {"columns": {"customers": {"id": "string"}}}
+    data_dir = _make_datadir(tmp_path, _suiteql_customers("full_load"), state)
+    with mock.patch.object(RestClient, "iter_suiteql", return_value=iter([{"id": 1, "name": "ACME"}])):
+        _run(data_dir)
+    manifest = json.loads((data_dir / "out" / "tables" / "customers.csv.manifest").read_text())
+    types = {col["name"]: col["data_type"]["base"]["type"] for col in manifest["schema"]}
+    assert types == {"id": "STRING", "name": "STRING"}
+
+
+def test_zero_row_run_writes_columns_from_earlier_run(tmp_path):
+    state = {"columns": {"customers": {"id": "string", "name": "string"}}}
+    data_dir = _make_datadir(tmp_path, _suiteql_customers("incremental_load"), state)
+    with mock.patch.object(RestClient, "iter_suiteql", return_value=iter([])):
+        _run(data_dir)
+    lines = (data_dir / "out" / "tables" / "customers.csv").read_text(encoding="utf-8").splitlines()
+    assert lines == ["id,name"]
 
 
 def test_sync_action_missing_credentials_exits_clean(tmp_path, capsys, caplog):

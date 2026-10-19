@@ -11,6 +11,12 @@
     {
       "level": "INFO",
       "logger": "root",
+      "message": "Loading state file..",
+      "timestamp": "2026-07-22T16:01:07.378Z"
+    },
+    {
+      "level": "INFO",
+      "logger": "root",
       "message": "Wrote 2 rows to table 'customer_filtered'.",
       "timestamp": "2026-07-22T16:01:07.378Z"
     }

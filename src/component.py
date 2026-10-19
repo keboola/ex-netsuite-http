@@ -120,6 +120,11 @@ _BASE_TYPES = {
     "string": BaseType.string,
 }
 
+# State key holding, per output table, the columns (name -> base type) written by earlier runs of
+# this row. NetSuite leaves out null fields, so a run where a column is null in every sampled row
+# would drop that column, and Storage rejects a load that lacks a column of the existing table.
+_STATE_COLUMNS_KEY = "columns"
+
 
 class Component(SyncActionsMixin, ComponentBase):
     """NetSuite HTTP extractor component."""
@@ -162,10 +167,14 @@ class Component(SyncActionsMixin, ComponentBase):
     # ---- output ----------------------------------------------------------
 
     def _write_result(self, result: ExtractionResult) -> None:
+        state_columns: dict[str, dict[str, str]] = self.get_state_file().get(_STATE_COLUMNS_KEY, {})
         for table in result.tables:
-            self._write_table(table)
+            if written_columns := self._write_table(table, state_columns.get(table.name, {})):
+                state_columns[table.name] = written_columns
+        self.write_state_file({_STATE_COLUMNS_KEY: state_columns})
 
-    def _write_table(self, table: OutputTable) -> None:
+    def _write_table(self, table: OutputTable, previous_columns: dict[str, str]) -> dict[str, str]:
+        """Write the table's CSV and manifest; return the written columns (name -> base type)."""
         # Stream rows straight to the CSV writer instead of materializing them (spec: avoid buffering
         # a whole large pull in memory). The CSV header needs the column set up front, so extractors
         # declare ``columns``; when they don't (a schema-less table), we fall back to buffering once
@@ -176,6 +185,10 @@ class Component(SyncActionsMixin, ComponentBase):
             buffered = list(rows_iter)
             columns = self._collect_columns(buffered)
             rows_iter = iter(buffered)
+
+        # Columns from earlier runs come first and keep their type: the Storage table already has them.
+        columns = list(previous_columns) + [col for col in columns if col not in previous_columns]
+        column_types = {**(table.column_types or {}), **previous_columns}
 
         # T12: a 0-row run must still create the Storage table. When the row data yielded no columns
         # (columns are data-derived), fall back to the configured primary key as the known header so a
@@ -188,7 +201,7 @@ class Component(SyncActionsMixin, ComponentBase):
                 "no Storage table written this run.",
                 table.name,
             )
-            return
+            return {}
 
         # A primary key that names a column the extraction did not return would fail opaquely at
         # Storage import; surface it here naming the missing and available columns (mirrors the
@@ -204,7 +217,7 @@ class Component(SyncActionsMixin, ComponentBase):
             f"{table.name}.csv",
             primary_key=table.primary_key,
             incremental=table.incremental,
-            schema=self._build_schema(columns, table.column_types, table.primary_key),
+            schema=self._build_schema(columns, column_types, table.primary_key),
             has_header=True,
         )
         written = 0
@@ -219,14 +232,14 @@ class Component(SyncActionsMixin, ComponentBase):
             logging.info("Table '%s': first run produced 0 rows; wrote a header-only table.", table.name)
         else:
             logging.info("Wrote %s rows to table '%s'.", written, table.name)
+        return {col: column_types.get(col, "string") for col in columns}
 
     @staticmethod
     def _build_schema(
         columns: list[str],
-        column_types: dict[str, str] | None,
+        column_types: dict[str, str],
         primary_key: list[str],
     ) -> TableDefinition.SCHEMA_TYPE:
-        column_types = column_types or {}
         schema: OrderedDict[str, ColumnDefinition] = OrderedDict()
         for name in columns:
             base_type = _BASE_TYPES.get(column_types.get(name, "string"), BaseType.string)()
