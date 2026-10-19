@@ -126,10 +126,11 @@ class RestClient(SignedHttpClient):
             payload = self.suiteql_page(query, limit=page_size, offset=offset)
             if offset == 0 and payload.get("hasMore") and not _has_top_level_order_by(query):
                 raise UserException(
-                    f"The SuiteQL result has more than {page_size} rows but the query has no ORDER BY. "
-                    "NetSuite's offset paging does not keep a stable row order without it, so rows "
-                    "would be silently skipped or duplicated across pages. Add an ORDER BY on a unique "
-                    "column (for example ORDER BY id) and run again."
+                    f"The SuiteQL result has more than {page_size} rows but the query has no ORDER BY "
+                    "on the outer query (an ORDER BY in a comment, a subquery or OVER (...) does not "
+                    "count). NetSuite's offset paging does not keep a stable row order without it, so "
+                    "rows would be silently skipped or duplicated across pages. Add an ORDER BY on a "
+                    "unique column (for example ORDER BY id) and run again."
                 )
             yield from payload.get("items", [])
             if not payload.get("hasMore"):
