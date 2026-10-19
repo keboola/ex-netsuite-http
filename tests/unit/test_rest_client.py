@@ -8,7 +8,7 @@ import responses
 from keboola.component.exceptions import UserException
 
 from client.auth import TBASigner
-from client.rest import RestClient
+from client.rest import RestClient, _has_top_level_order_by
 
 BASE = "https://1234567-sb1.suitetalk.api.netsuite.com"
 RECORD_URL = f"{BASE}/services/rest/record/v1/customer"
@@ -94,6 +94,52 @@ def test_suiteql_order_by_only_in_subquery_still_fails():
     query = "SELECT id FROM customer WHERE id IN (SELECT id FROM customer ORDER BY id)"
     with pytest.raises(UserException, match="ORDER BY"):
         list(client.iter_suiteql(query, limit=1))
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM customer -- ORDER BY id",
+        "SELECT id FROM customer\n-- ORDER BY id\n",
+        "SELECT id FROM customer /* ORDER BY id */",
+        "SELECT id FROM customer /* ORDER BY id",
+        "SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rn FROM customer",
+        "SELECT id FROM customer WHERE name = 'order by id'",
+        'SELECT id AS "order by id" FROM customer',
+        "SELECT id FROM customer WHERE id IN (SELECT id FROM customer ORDER BY id)",
+    ],
+)
+def test_query_without_top_level_order_by_is_detected(query):
+    assert not _has_top_level_order_by(query)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM customer ORDER BY id",
+        "select id from customer order\n  by id",
+        "SELECT id FROM customer -- filter (draft\nORDER BY id",
+        "SELECT id FROM customer /* skip ( */ ORDER BY id",
+        'SELECT id AS "id (internal)" FROM customer ORDER BY id',
+        "SELECT id FROM customer WHERE name = '(' ORDER BY id",
+        "SELECT id FROM customer WHERE name = '--' ORDER BY id",
+        "SELECT id FROM customer -- it's the main list\nORDER BY id",
+        "SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rn FROM customer ORDER BY id",
+    ],
+)
+def test_query_with_top_level_order_by_is_detected(query):
+    assert _has_top_level_order_by(query)
+
+
+@responses.activate
+def test_suiteql_multipage_with_commented_out_order_by_fails():
+    # A commented-out ORDER BY does not order the result, so offset paging could lose rows.
+    responses.add(responses.POST, SUITEQL_URL, json={"items": [{"id": "1"}], "hasMore": True}, status=200)
+    responses.add(responses.POST, SUITEQL_URL, json={"items": [{"id": "2"}], "hasMore": False}, status=200)
+    client = _client()
+    with pytest.raises(UserException, match="ORDER BY"):
+        list(client.iter_suiteql("SELECT id FROM customer -- ORDER BY id", limit=1))
+    assert len(responses.calls) == 1
 
 
 @responses.activate

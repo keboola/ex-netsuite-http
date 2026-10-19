@@ -20,15 +20,22 @@ _SUITEQL_PATH = "/services/rest/query/v1/suiteql"
 _METADATA_PATH = "/services/rest/record/v1/metadata-catalog"
 
 _ORDER_BY_RE = re.compile(r"\border\s+by\b", re.IGNORECASE)
-_STRING_LITERAL_RE = re.compile(r"'(?:[^']|'')*'")
+# One left-to-right scan, so a quote inside a comment or a ``--`` inside a string is not misread.
+_NON_CODE_RE = re.compile(r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|--[^\n]*|/\*.*?(?:\*/|\Z)", re.DOTALL)
+
+
+def _blank_non_code(match: re.Match[str]) -> str:
+    token = match.group()
+    return token[0] * 2 if token[0] in "'\"" else " "
 
 
 def _has_top_level_order_by(query: str) -> bool:
     """True when the query has an ``ORDER BY`` outside any parentheses, i.e. not only in a subquery.
 
-    String literals are blanked first so an ``'order by'`` inside a value does not count.
+    String literals, quoted identifiers and comments are blanked first: an ``ORDER BY`` in them does
+    not order the result, and a parenthesis in them would break the depth count.
     """
-    text = _STRING_LITERAL_RE.sub("''", query)
+    text = _NON_CODE_RE.sub(_blank_non_code, query)
     for match in _ORDER_BY_RE.finditer(text):
         prefix = text[: match.start()]
         if prefix.count("(") == prefix.count(")"):

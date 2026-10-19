@@ -269,6 +269,19 @@ def test_column_type_from_earlier_run_wins(tmp_path):
     assert types == {"id": "STRING", "name": "STRING"}
 
 
+def test_primary_key_only_in_earlier_run_columns_raises_user_exception(tmp_path):
+    # The query stopped returning the key column. The state still has it, but the key must come from
+    # this run's data, or every row gets an empty key and an incremental load merges them into one.
+    state = {"columns": {"customers": {"id": "string", "name": "string"}}}
+    data_dir = _make_datadir(tmp_path, _suiteql_customers("incremental_load"), state)
+    rows = [{"name": "ACME"}, {"name": "Globex"}]
+    with mock.patch.object(RestClient, "iter_suiteql", return_value=iter(rows)):
+        with pytest.raises(UserException) as exc:
+            _run(data_dir)
+    assert "['id']" in str(exc.value)
+    assert not (data_dir / "out" / "tables" / "customers.csv").exists()
+
+
 def test_zero_row_run_writes_columns_from_earlier_run(tmp_path):
     state = {"columns": {"customers": {"id": "string", "name": "string"}}}
     data_dir = _make_datadir(tmp_path, _suiteql_customers("incremental_load"), state)
