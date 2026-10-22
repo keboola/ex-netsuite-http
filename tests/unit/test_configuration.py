@@ -354,3 +354,29 @@ def test_run_validation_error_has_no_chained_cause():
     with pytest.raises(UserException) as exc_info:
         cfg.validate_for_run()
     assert exc_info.value.__cause__ is None
+
+
+# ---- SuiteQL Column Types --------------------------------------------------
+
+
+def test_column_types_parsed():
+    cfg = _cfg(mode="suiteql", query="SELECT 1", column_types=[{"column": "trandate", "type": "date"}])
+    assert [(s.column, s.type.value) for s in cfg.row.column_types] == [("trandate", "date")]
+
+
+@pytest.mark.parametrize(
+    ("column_types", "message"),
+    [
+        ([{"column": "a", "type": "date"}, {"column": "a", "type": "string"}], "repeated: \\['a'\\]"),
+        ([{"column": "", "type": "date"}], "needs a column name"),
+    ],
+)
+def test_invalid_column_types_rejected_at_run(column_types, message):
+    cfg = _cfg(mode="suiteql", query="SELECT 1", load_type="full_load", column_types=column_types)
+    with pytest.raises(UserException, match=message):
+        cfg.validate_for_run()
+
+
+def test_unknown_column_type_rejected():
+    with pytest.raises(UserException, match="column_types"):
+        _cfg(mode="suiteql", query="SELECT 1", column_types=[{"column": "a", "type": "datetime"}])

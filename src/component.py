@@ -116,7 +116,10 @@ VCR_SANITIZERS = [
 _BASE_TYPES = {
     "integer": BaseType.integer,
     "numeric": BaseType.numeric,
+    "float": BaseType.float,
     "boolean": BaseType.boolean,
+    "date": BaseType.date,
+    "timestamp": BaseType.timestamp,
     "string": BaseType.string,
 }
 
@@ -188,8 +191,9 @@ class Component(SyncActionsMixin, ComponentBase):
         data_columns = columns
 
         # Columns from earlier runs come first and keep their type: the Storage table already has them.
+        # A type the user set in the row config wins over both.
         columns = list(previous_columns) + [col for col in columns if col not in previous_columns]
-        column_types = {**(table.column_types or {}), **previous_columns}
+        column_types = {**(table.column_types or {}), **previous_columns, **table.set_column_types}
 
         # T12: a 0-row run must still create the Storage table. When the row data yielded no columns
         # (columns are data-derived), fall back to the configured primary key as the known header so a

@@ -156,6 +156,43 @@
       },
       "propertyOrder": 23
     },
+    "column_types": {
+      "type": "array",
+      "title": "Column Types",
+      "description": "Storage data types for the columns that should not be strings",
+      "format": "table",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "title": "Column",
+        "required": ["column", "type"],
+        "properties": {
+          "column": {
+            "type": "string",
+            "title": "Column",
+            "minLength": 1,
+            "propertyOrder": 1
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "enum": ["string", "integer", "numeric", "float", "boolean", "date", "timestamp"],
+            "default": "string",
+            "options": {
+              "enum_titles": ["String", "Integer", "Numeric", "Float", "Boolean", "Date", "Timestamp"]
+            },
+            "propertyOrder": 2
+          }
+        }
+      },
+      "options": {
+        "dependencies": {
+          "mode": "suiteql"
+        },
+        "tooltip": "SuiteQL returns every value as text, so the output columns are strings unless you set a type here. Use the column name as it appears in the output table. Date values are converted from the date format of the NetSuite user to ISO. NetSuite returns a date with time as the date only, so for a Timestamp column convert it in the query, e.g. `TO_CHAR(lastmodifieddate, 'YYYY-MM-DD\"T\"HH24:MI:SS') AS lastmodifieddate`. Boolean `T`/`F` values are converted to `true`/`false`. Storage keeps the type of an existing column: to change it, delete the table (or the column) and run again."
+      },
+      "propertyOrder": 24
+    },
 
     "saved_search_id": {
       "type": "string",

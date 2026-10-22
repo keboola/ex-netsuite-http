@@ -282,6 +282,22 @@ def test_primary_key_only_in_earlier_run_columns_raises_user_exception(tmp_path)
     assert not (data_dir / "out" / "tables" / "customers.csv").exists()
 
 
+def test_set_column_types_win_over_earlier_runs_and_reach_the_manifest(tmp_path):
+    params = {
+        **_suiteql_customers("full_load"),
+        "column_types": [{"column": "id", "type": "integer"}, {"column": "created", "type": "date"}],
+    }
+    state = {"columns": {"customers": {"id": "string", "name": "string"}}}
+    data_dir = _make_datadir(tmp_path, params, state)
+    with mock.patch.object(RestClient, "iter_suiteql", return_value=iter([{"id": "1", "created": "2025-04-30"}])):
+        _run(data_dir)
+    manifest = json.loads((data_dir / "out" / "tables" / "customers.csv.manifest").read_text())
+    types = {col["name"]: col["data_type"]["base"]["type"] for col in manifest["schema"]}
+    assert types == {"id": "INTEGER", "name": "STRING", "created": "DATE"}
+    out_state = json.loads((data_dir / "out" / "state.json").read_text())
+    assert out_state["columns"]["customers"] == {"id": "integer", "name": "string", "created": "date"}
+
+
 def test_zero_row_run_writes_columns_from_earlier_run(tmp_path):
     state = {"columns": {"customers": {"id": "string", "name": "string"}}}
     data_dir = _make_datadir(tmp_path, _suiteql_customers("incremental_load"), state)

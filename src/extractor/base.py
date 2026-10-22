@@ -33,6 +33,8 @@ class OutputTable:
     # Optional column ordering and per-column base types (colname -> "string"/"integer"/...).
     columns: list[str] | None = None
     column_types: dict[str, str] | None = None
+    # Base types the user set in the row config. They win over inferred types and earlier runs.
+    set_column_types: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
