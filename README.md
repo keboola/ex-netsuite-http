@@ -115,7 +115,7 @@ NetSuite returns every SuiteQL value as text: dates in the date format of the Ne
 - `boolean`: `T`/`F` become `true`/`false`.
 - Other types: the value is not changed. Storage rejects a value that does not match the type.
 
-Storage keeps the type of an existing column. To change it, delete the table (or the column) and run again.
+Storage does not change the type of an existing column, so the run fails. To change the type, delete the table (or the column) and run again.
 
 Mode `saved_search`:
 
