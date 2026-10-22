@@ -78,6 +78,23 @@ class SublistHandling(StrEnum):
     child_table = "child_table"
 
 
+class ColumnType(StrEnum):
+    string = "string"
+    integer = "integer"
+    numeric = "numeric"
+    float = "float"
+    boolean = "boolean"
+    date = "date"
+    timestamp = "timestamp"
+
+
+class ColumnTypeSetting(BaseModel):
+    """A Storage data type the user sets for one output column."""
+
+    column: str
+    type: ColumnType
+
+
 class HttpMethod(StrEnum):
     GET = "GET"
     POST = "POST"
@@ -169,6 +186,8 @@ class SuiteQLRow(BaseRow):
     # exceed NetSuite's ~100k SuiteQL row ceiling should be narrowed.
     date_from: str = ""
     date_to: str = "now"
+    # SuiteQL returns every value as text, so the output column types cannot come from the data.
+    column_types: list[ColumnTypeSetting] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_required(self, info: ValidationInfo) -> SuiteQLRow:
@@ -176,6 +195,12 @@ class SuiteQLRow(BaseRow):
             return self
         if not self.query:
             raise UserException("suiteql mode requires a 'query'.")
+        columns = [setting.column for setting in self.column_types]
+        if "" in columns:
+            raise UserException("Column Types: every entry needs a column name.")
+        duplicates = sorted({col for col in columns if columns.count(col) > 1})
+        if duplicates:
+            raise UserException(f"Column Types: each column can have only one type; repeated: {duplicates}.")
         has_placeholders = _DATE_FROM_PLACEHOLDER in self.query or _DATE_TO_PLACEHOLDER in self.query
         if self.date_from and not has_placeholders:
             raise UserException(

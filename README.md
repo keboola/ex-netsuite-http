@@ -103,11 +103,19 @@ Mode `suiteql`:
 | `query`     | —       | SuiteQL query. Put `:date_from` / `:date_to` in the WHERE clause to use the date range below.            |
 | `date_from` | `""`    | Start of the date range (absolute `2024-01-01` or relative `5 days ago`), parsed with Keboola's dateparser and substituted into `:date_from`. Empty disables substitution. |
 | `date_to`   | `now`   | End of the date range (absolute or relative, e.g. `now`), substituted into `:date_to`.                   |
+| `column_types` | `[]` | Storage data types for named output columns: a list of `{"column": ..., "type": ...}`, where the type is `string`, `integer`, `numeric`, `float`, `boolean`, `date` or `timestamp`. |
 
 A single range is issued as-is (no automatic chunking); narrow a range that would exceed NetSuite's
 ~100k-row SuiteQL result ceiling.
 
-NetSuite returns every SuiteQL value as text: dates in the date format of the NetSuite user, booleans as `T`/`F`. The output columns are therefore strings. To get ISO dates, convert them in the query, e.g. `TO_CHAR(trandate, 'YYYY-MM-DD') AS trandate`, or `TO_CHAR(lastmodifieddate, 'YYYY-MM-DD"T"HH24:MI:SS') AS lastmodifieddate` for a date with time.
+NetSuite returns every SuiteQL value as text: dates in the date format of the NetSuite user, booleans as `T`/`F`. The output columns are therefore strings, unless `column_types` sets a type for them. For a column with a type, the extractor converts the values:
+
+- `date`: a date in the format of the NetSuite user becomes ISO (`2025-04-30`). The extractor reads that format from NetSuite with one extra query, only when it finds a date that is not ISO.
+- `timestamp`: NetSuite returns a date with time as the date only, so the value must already be ISO. Convert the column in the query, e.g. `TO_CHAR(lastmodifieddate, 'YYYY-MM-DD"T"HH24:MI:SS') AS lastmodifieddate`. A value without time fails the run.
+- `boolean`: `T`/`F` become `true`/`false`.
+- Other types: the value is not changed. Storage rejects a value that does not match the type.
+
+Storage does not change the type of an existing column, so the run fails. To change the type, delete the table (or the column) and run again.
 
 Mode `saved_search`:
 

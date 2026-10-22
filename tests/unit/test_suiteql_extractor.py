@@ -7,7 +7,7 @@ from keboola.component.exceptions import UserException
 
 from configuration import SuiteQLRow
 from extractor.base import SCHEMA_SAMPLE_SIZE
-from extractor.suiteql import SuiteQLExtractor
+from extractor.suiteql import SuiteQLExtractor, date_format_from_probe
 
 
 def _row(**kw):
@@ -118,3 +118,97 @@ def test_typed_columns_inferred():
     assert table.column_types["name"] == "string"
     assert table.column_types["balance"] == "numeric"
     assert table.column_types["active"] == "boolean"
+
+
+# ---- Column Types ------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("rendered", "expected"),
+    [
+        ("12/31/2001", "%m/%d/%Y"),
+        ("31/12/2001", "%d/%m/%Y"),
+        ("31.12.2001", "%d.%m.%Y"),
+        ("2001/12/31", "%Y/%m/%d"),
+        ("31-Dec-2001", "%d-%b-%Y"),
+        ("31 December, 2001", "%d %B, %Y"),
+    ],
+)
+def test_date_format_from_probe(rendered, expected):
+    assert date_format_from_probe(rendered) == expected
+
+
+def test_date_format_from_probe_rejects_two_digit_year():
+    with pytest.raises(UserException, match="12/31/01"):
+        date_format_from_probe("12/31/01")
+
+
+def _typed_rows(column_types, rows, probe="12/31/2001"):
+    """Run the extractor with Column Types; the second iter_suiteql call is the date-format probe."""
+    row = _row(
+        load_type="full_load",
+        column_types=[{"column": col, "type": typ} for col, typ in column_types.items()],
+    )
+    ext, client = _extractor(row, [rows, [{"links": [], "probe": probe}]])
+    table = ext.extract().tables[0]
+    return list(table.rows), table, client
+
+
+def test_set_column_types_reach_the_table():
+    _, table, _ = _typed_rows({"amount": "numeric", "trandate": "date"}, [{"amount": "1.5", "trandate": "4/30/2025"}])
+    assert table.set_column_types == {"amount": "numeric", "trandate": "date"}
+
+
+@pytest.mark.parametrize(
+    ("column_type", "value", "expected"),
+    [
+        ("date", "4/30/2025", "2025-04-30"),
+        ("date", "2025-04-30", "2025-04-30"),
+        ("date", "2025-04-30T10:11:12", "2025-04-30"),
+        ("timestamp", "2025-04-30T10:11:12", "2025-04-30T10:11:12"),
+        ("boolean", "T", "true"),
+        ("boolean", "F", "false"),
+        ("integer", "42", "42"),
+        ("numeric", "1.5", "1.5"),
+    ],
+)
+def test_values_converted_to_the_set_type(column_type, value, expected):
+    rows, _, _ = _typed_rows({"col": column_type}, [{"id": "1", "col": value}])
+    assert rows[0]["col"] == expected
+
+
+def test_date_in_the_netsuite_user_format_d_m_y():
+    rows, _, _ = _typed_rows({"col": "date"}, [{"col": "30/4/2025"}], probe="31/12/2001")
+    assert rows[0]["col"] == "2025-04-30"
+
+
+def test_date_format_probed_once_and_only_when_needed():
+    rows, _, client = _typed_rows({"d": "date"}, [{"d": "2025-04-30"}, {"d": "2025-05-01"}])
+    assert [r["d"] for r in rows] == ["2025-04-30", "2025-05-01"]
+    assert client.iter_suiteql.call_count == 1
+
+    rows, _, client = _typed_rows({"d": "date"}, [{"d": "4/30/2025"}, {"d": "5/1/2025"}])
+    assert [r["d"] for r in rows] == ["2025-04-30", "2025-05-01"]
+    assert client.iter_suiteql.call_count == 2
+
+
+def test_null_values_left_alone():
+    rows, _, client = _typed_rows({"d": "date", "b": "boolean"}, [{"id": "1"}, {"id": "2", "d": ""}])
+    assert rows == [{"id": "1"}, {"id": "2", "d": ""}]
+    assert client.iter_suiteql.call_count == 1
+
+
+def test_value_that_is_not_a_date_raises_user_exception():
+    with pytest.raises(UserException, match="'col' has the type Date.*TO_CHAR"):
+        _typed_rows({"col": "date"}, [{"col": "not a date"}])
+
+
+def test_timestamp_without_time_raises_user_exception():
+    # NetSuite renders a date with time as the date only; the time is gone, so do not invent midnight.
+    with pytest.raises(UserException, match="'col' has the type Timestamp.*TO_CHAR"):
+        _typed_rows({"col": "timestamp"}, [{"col": "4/30/2025"}])
+
+
+def test_unknown_set_column_is_logged(caplog):
+    _typed_rows({"tpyo": "date"}, [{"id": "1"}])
+    assert "tpyo" in caplog.text
