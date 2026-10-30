@@ -313,3 +313,28 @@ def test_error_message_excludes_response_body():
     with pytest.raises(UserException) as exc:
         list(client.iter_suiteql("SELECT 1"))
     assert "secret-internal-detail" not in str(exc.value)
+
+
+@responses.activate
+def test_suiteql_error_message_includes_netsuite_error_details():
+    body = {
+        "o:errorDetails": [
+            {
+                "detail": "Invalid search query. Search error occurred: Record 'nosuchtable' was not found.",
+                "o:errorCode": "INVALID_PARAMETER",
+            }
+        ]
+    }
+    responses.add(responses.POST, SUITEQL_URL, status=400, json=body)
+    client = _client()
+    with pytest.raises(UserException, match="failed \\(400\\). NetSuite says: INVALID_PARAMETER: .*'nosuchtable'"):
+        list(client.iter_suiteql("SELECT id FROM nosuchtable"))
+
+
+@responses.activate
+def test_suiteql_error_detail_is_capped():
+    responses.add(responses.POST, SUITEQL_URL, status=400, json={"o:errorDetails": [{"detail": "x" * 5000}]})
+    client = _client()
+    with pytest.raises(UserException) as exc:
+        list(client.iter_suiteql("SELECT 1"))
+    assert len(str(exc.value)) < 1200

@@ -11,6 +11,7 @@ intentionally separate (it uses zeep + a TokenPassport header).
 import logging
 import random
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -61,7 +62,10 @@ class SignedHttpClient:
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | list[Any] | None = None,
         extra_headers: dict[str, str] | None = None,
+        error_detail: Callable[[requests.Response], str] | None = None,
     ) -> requests.Response:
+        """Send a signed request with retries. ``error_detail`` may add a safe part of a failed
+        response to the error message; without it, the message has only the status and the path."""
         params = {k: str(v) for k, v in (params or {}).items()}
         attempt = 0
         while True:
@@ -118,7 +122,11 @@ class SignedHttpClient:
                 self._sleep_before_retry(response, attempt)
                 continue
             if not response.ok:
-                raise UserException(f"NetSuite request to {urlsplit(url).path} failed ({response.status_code}).")
+                detail = error_detail(response) if error_detail else ""
+                raise UserException(
+                    f"NetSuite request to {urlsplit(url).path} failed ({response.status_code})."
+                    + (f" NetSuite says: {detail}" if detail else "")
+                )
             return response
 
     def _backoff_delay(self, attempt: int) -> float:
