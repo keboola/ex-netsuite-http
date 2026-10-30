@@ -188,6 +188,10 @@ class SuiteQLRow(BaseRow):
     date_to: str = "now"
     # SuiteQL returns every value as text, so the output column types cannot come from the data.
     column_types: list[ColumnTypeSetting] = Field(default_factory=list)
+    # Optional SuiteQL query that returns the primary key of records deleted in NetSuite (typically
+    # from the ``deletedrecord`` table). An incremental load only upserts, so without it a deleted
+    # record stays in the table forever.
+    deleted_query: str = ""
 
     @model_validator(mode="after")
     def _validate_required(self, info: ValidationInfo) -> SuiteQLRow:
@@ -201,10 +205,16 @@ class SuiteQLRow(BaseRow):
         duplicates = sorted({col for col in columns if columns.count(col) > 1})
         if duplicates:
             raise UserException(f"Column Types: each column can have only one type; repeated: {duplicates}.")
-        has_placeholders = _DATE_FROM_PLACEHOLDER in self.query or _DATE_TO_PLACEHOLDER in self.query
+        if self.deleted_query and not self.incremental:
+            raise UserException(
+                "Deleted Records Query needs Incremental Load. A full load rewrites the table, so a "
+                "deleted record is already gone from it."
+            )
+        queries = (self.query, self.deleted_query)
+        has_placeholders = any(_DATE_FROM_PLACEHOLDER in q or _DATE_TO_PLACEHOLDER in q for q in queries)
         if self.date_from and not has_placeholders:
             raise UserException(
-                "A date range (Start Date) is set but the query has no ':date_from'/':date_to' "
+                "A date range (Start Date) is set but no query has ':date_from'/':date_to' "
                 "placeholders, so it would do nothing. Add the placeholders to the WHERE clause "
                 "(e.g. WHERE lastmodifieddate BETWEEN :date_from AND :date_to) or clear Start Date."
             )

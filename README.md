@@ -104,6 +104,7 @@ Mode `suiteql`:
 | `date_from` | `""`    | Start of the date range (absolute `2024-01-01` or relative `5 days ago`), parsed with Keboola's dateparser and substituted into `:date_from`. Empty disables substitution. |
 | `date_to`   | `now`   | End of the date range (absolute or relative, e.g. `now`), substituted into `:date_to`.                   |
 | `column_types` | `[]` | Storage data types for named output columns: a list of `{"column": ..., "type": ...}`, where the type is `string`, `integer`, `numeric`, `float`, `boolean`, `date` or `timestamp`. |
+| `deleted_query` | `""` | Optional SuiteQL query that returns the primary keys of records deleted in NetSuite (see below). Needs incremental load. |
 
 A single range is issued as-is (no automatic chunking); narrow a range that would exceed NetSuite's
 ~100k-row SuiteQL result ceiling.
@@ -116,6 +117,14 @@ NetSuite returns every SuiteQL value as text: dates in the date format of the Ne
 - Other types: the value is not changed. Storage rejects a value that does not match the type.
 
 Storage does not change the type of an existing column, so the run fails. To change the type, delete the table (or the column) and run again.
+
+An incremental load only updates and adds rows, so a record deleted in NetSuite stays in the table. `deleted_query` returns the primary key of each deleted record, under the same column name(s) as `query`. NetSuite logs deletions in the `deletedrecord` table (`recordid`, `scriptid`, `type`, `name`, `deleteddate`, `deletedby`, `context`), e.g.:
+
+```sql
+SELECT recordid AS id FROM deletedrecord WHERE scriptid = 'invoice' AND deleteddate >= :date_from ORDER BY recordid
+```
+
+The output table then gets an `is_deleted` column: `0` for the rows of `query`, `1` for the keys from `deleted_query`. Only the key and `is_deleted` are written for a deleted record, so its other columns become empty. The `:date_from` / `:date_to` placeholders work in both queries. If NetSuite answers "Record 'deletedrecord' was not found", check that the NetSuite role can read deleted records. A table with a composite key, such as `transactionline`, cannot use `deletedrecord`, because the log has only the id of the deleted transaction.
 
 Mode `saved_search`:
 
