@@ -18,6 +18,7 @@ from client.http_base import SignedHttpClient
 _RECORD_PATH = "/services/rest/record/v1"
 _SUITEQL_PATH = "/services/rest/query/v1/suiteql"
 _METADATA_PATH = "/services/rest/record/v1/metadata-catalog"
+_SUITEQL_ERROR_DETAIL_MAX_CHARS = 1000
 
 _ORDER_BY_RE = re.compile(r"\border\s+by\b", re.IGNORECASE)
 # One left-to-right scan, so a quote inside a comment or a ``--`` inside a string is not misread.
@@ -54,6 +55,24 @@ def _json(response: requests.Response, surface: str) -> dict[str, Any]:
         return response.json()
     except (ValueError, requests.exceptions.JSONDecodeError) as exc:
         raise UserException(f"NetSuite returned a non-JSON response for {surface}.") from exc
+
+
+def _suiteql_error_detail(response: requests.Response) -> str:
+    """Return NetSuite's own error codes and texts for a rejected SuiteQL query.
+
+    These texts describe the query (an unknown table or field, a syntax error, a search timeout),
+    not record data, so they are safe to show. Other response bodies stay hidden.
+    """
+    try:
+        details = response.json().get("o:errorDetails", [])
+    except ValueError, AttributeError:
+        return ""
+    texts = [
+        f"{item.get('o:errorCode', 'ERROR')}: {item.get('detail', '')}".strip()
+        for item in details
+        if isinstance(item, dict)
+    ]
+    return " ".join(texts)[:_SUITEQL_ERROR_DETAIL_MAX_CHARS]
 
 
 class RestClient(SignedHttpClient):
@@ -108,6 +127,7 @@ class RestClient(SignedHttpClient):
             params={"limit": min(limit, 1000), "offset": offset},
             json_body={"q": query},
             extra_headers={"Prefer": "transient"},
+            error_detail=_suiteql_error_detail,
         )
         return _json(response, "SuiteQL query")
 

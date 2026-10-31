@@ -298,6 +298,18 @@ def test_set_column_types_win_over_earlier_runs_and_reach_the_manifest(tmp_path)
     assert out_state["columns"]["customers"] == {"id": "integer", "name": "string", "created": "date"}
 
 
+def test_deleted_records_written_with_is_deleted_flag(tmp_path):
+    params = {**_suiteql_customers("incremental_load"), "deleted_query": "SELECT recordid AS id FROM deletedrecord"}
+    data_dir = _make_datadir(tmp_path, params)
+    pages = [iter([{"id": "1", "name": "ACME"}]), iter([{"id": "7"}])]
+    with mock.patch.object(RestClient, "iter_suiteql", side_effect=pages):
+        _run(data_dir)
+    lines = (data_dir / "out" / "tables" / "customers.csv").read_text(encoding="utf-8").splitlines()
+    assert lines == ["id,name,is_deleted", "1,ACME,0", "7,,1"]
+    manifest = json.loads((data_dir / "out" / "tables" / "customers.csv.manifest").read_text())
+    assert manifest["incremental"] is True
+
+
 def test_zero_row_run_writes_columns_from_earlier_run(tmp_path):
     state = {"columns": {"customers": {"id": "string", "name": "string"}}}
     data_dir = _make_datadir(tmp_path, _suiteql_customers("incremental_load"), state)

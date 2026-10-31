@@ -193,6 +193,22 @@
       },
       "propertyOrder": 24
     },
+    "deleted_query": {
+      "type": "string",
+      "title": "Deleted Records Query",
+      "description": "Optional SuiteQL query that returns the primary keys of deleted records",
+      "format": "editor",
+      "options": {
+        "dependencies": {
+          "mode": "suiteql"
+        },
+        "editor": {
+          "mode": "text/x-sql"
+        },
+        "tooltip": "An incremental load only updates and adds rows, so a record deleted in NetSuite stays in the table. This query returns the primary key of each deleted record, under the same column name(s) as the main query, typically from NetSuite's `deletedrecord` table, e.g. `SELECT recordid AS id FROM deletedrecord WHERE scriptid = 'invoice' AND deleteddate >= :date_from ORDER BY recordid`. The table then gets an `is_deleted` column: `0` for the rows of the main query, `1` for the deleted records. The other columns of a deleted record become empty. Needs Incremental Load and a primary key. If NetSuite answers \"Record 'deletedrecord' was not found\", check that the NetSuite role can read deleted records."
+      },
+      "propertyOrder": 25
+    },
 
     "saved_search_id": {
       "type": "string",

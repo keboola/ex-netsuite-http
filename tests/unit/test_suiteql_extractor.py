@@ -212,3 +212,60 @@ def test_timestamp_without_time_raises_user_exception():
 def test_unknown_set_column_is_logged(caplog):
     _typed_rows({"tpyo": "date"}, [{"id": "1"}])
     assert "tpyo" in caplog.text
+
+
+# ---- Deleted Records Query ---------------------------------------------------------------------
+
+
+def _deleted_run(main_rows, deleted_rows, **kw):
+    row = _row(
+        load_type="incremental_load", primary_key=["id"], deleted_query="SELECT recordid AS id FROM deletedrecord", **kw
+    )
+    ext, client = _extractor(row, [main_rows, deleted_rows])
+    table = ext.extract().tables[0]
+    return list(table.rows), table, client
+
+
+def test_deleted_records_flagged_after_main_rows():
+    rows, table, client = _deleted_run([{"id": "1", "name": "A"}], [{"id": "7", "deleteddate": "x"}])
+    assert rows == [{"id": "1", "name": "A", "is_deleted": "0"}, {"id": "7", "is_deleted": "1"}]
+    assert table.columns == ["id", "name", "is_deleted"]
+    assert client.iter_suiteql.call_args_list[1][0][0] == "SELECT recordid AS id FROM deletedrecord"
+
+
+def test_deleted_records_with_empty_main_result():
+    rows, table, _ = _deleted_run([], [{"id": "7"}])
+    assert rows == [{"id": "7", "is_deleted": "1"}]
+    assert table.columns is None
+
+
+def test_deleted_row_without_primary_key_raises_user_exception():
+    with pytest.raises(UserException, match="without the primary key column\\(s\\) \\['id'\\].*recordid AS id"):
+        _deleted_run([{"id": "1"}], [{"recordid": "7"}])
+
+
+def test_main_query_with_is_deleted_column_raises_user_exception():
+    with pytest.raises(UserException, match="column named 'is_deleted'"):
+        _deleted_run([{"id": "1", "is_deleted": "F"}], [])
+
+
+def test_date_placeholders_substituted_in_deleted_query():
+    row = _row(
+        load_type="incremental_load",
+        primary_key=["id"],
+        deleted_query="SELECT recordid AS id FROM deletedrecord WHERE deleteddate >= :date_from",
+        date_from="2026-09-29",
+    )
+    ext, client = _extractor(row, [[{"id": "1"}], [{"id": "7"}]])
+    list(ext.extract().tables[0].rows)
+    deleted_query = client.iter_suiteql.call_args_list[1][0][0]
+    assert ":date_from" not in deleted_query
+    assert "TO_TIMESTAMP('2026-09-29" in deleted_query
+
+
+def test_no_deleted_query_no_is_deleted_column():
+    row = _row(load_type="full_load")
+    ext, _ = _extractor(row, [[{"id": "1"}]])
+    table = ext.extract().tables[0]
+    assert list(table.rows) == [{"id": "1"}]
+    assert table.columns == ["id"]

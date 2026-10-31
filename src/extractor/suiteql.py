@@ -7,8 +7,11 @@ range is issued verbatim (no auto sub-chunking); a range that would exceed NetSu
 row ceiling should be narrowed. NetSuite returns every SuiteQL value as text (dates in the user's
 date format, booleans as ``T``/``F``), so the inferred column types come out as string. The row's
 Column Types set the Storage type of named columns, and the extractor converts their values to match.
+The optional Deleted Records Query returns the primary keys of deleted records. The extractor then
+writes an ``is_deleted`` column: ``0`` for the rows of the main query, ``1`` for the deleted keys.
 """
 
+import itertools
 import logging
 import re
 from collections.abc import Iterator
@@ -54,6 +57,7 @@ _PROBE_DATE_PARTS = {"december": "%B", "2001": "%Y", "dec": "%b", "31": "%d", "1
 _PROBE_DATE_PARTS_RE = re.compile("|".join(_PROBE_DATE_PARTS), re.IGNORECASE)
 _ISO_START_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _NETSUITE_BOOLEANS = {"T": "true", "F": "false"}
+_IS_DELETED = "is_deleted"
 _TO_CHAR_DATE = "TO_CHAR(<column>, 'YYYY-MM-DD') AS <column>"
 _TO_CHAR_TIMESTAMP = "TO_CHAR(<column>, 'YYYY-MM-DD\"T\"HH24:MI:SS') AS <column>"
 
@@ -143,6 +147,15 @@ class SuiteQLExtractor(Extractor):
         stream, columns, column_types = resolve_stream_schema(
             self.rest_client.iter_suiteql(query, limit=self.row.page_limit)
         )
+        if self.row.deleted_query:
+            if columns is not None and _IS_DELETED in columns:
+                raise UserException(
+                    f"The query returns a column named '{_IS_DELETED}', which the Deleted Records Query "
+                    "also writes. Rename the column in the query."
+                )
+            stream = itertools.chain(self._flag_not_deleted(stream), self._deleted_rows())
+            if columns is not None:
+                columns = [*columns, _IS_DELETED]
         set_column_types = {setting.column: setting.type.value for setting in self.row.column_types}
         if set_column_types:
             stream = ColumnTypeConverter(set_column_types, self.rest_client).convert(stream)
@@ -163,6 +176,32 @@ class SuiteQLExtractor(Extractor):
             set_column_types=set_column_types,
         )
         return ExtractionResult(tables=[table])
+
+    @staticmethod
+    def _flag_not_deleted(rows: Iterator[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+        for row in rows:
+            row[_IS_DELETED] = "0"
+            yield row
+
+    def _deleted_rows(self) -> Iterator[dict[str, Any]]:
+        """Yield the primary key of each deleted record with ``is_deleted`` = 1.
+
+        Only the key goes out: the record is gone in NetSuite, so an incremental load sets the other
+        columns of that row empty.
+        """
+        query = self._bind_dates(self.row.deleted_query)
+        logging.info("Running the Deleted Records Query")
+        count = 0
+        for row in self.rest_client.iter_suiteql(query, limit=self.row.page_limit):
+            missing = [pk for pk in self.row.primary_key if row.get(pk) in (None, "")]
+            if missing:
+                raise UserException(
+                    f"The Deleted Records Query returned a row without the primary key column(s) {missing}. "
+                    "Return the key under the same name as the main query, e.g. SELECT recordid AS id."
+                )
+            count += 1
+            yield {**{pk: row[pk] for pk in self.row.primary_key}, _IS_DELETED: "1"}
+        logging.info("The Deleted Records Query returned %s deleted records.", count)
 
     def _bind_dates(self, query: str) -> str:
         """Substitute the parsed date range into the ':date_from' / ':date_to' placeholders.

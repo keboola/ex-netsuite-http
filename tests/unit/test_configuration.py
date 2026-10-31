@@ -380,3 +380,29 @@ def test_invalid_column_types_rejected_at_run(column_types, message):
 def test_unknown_column_type_rejected():
     with pytest.raises(UserException, match="column_types"):
         _cfg(mode="suiteql", query="SELECT 1", column_types=[{"column": "a", "type": "datetime"}])
+
+
+# ---- SuiteQL Deleted Records Query -----------------------------------------
+
+
+def test_deleted_query_needs_incremental_load():
+    cfg = _cfg(
+        mode="suiteql",
+        query="SELECT id FROM tx",
+        load_type="full_load",
+        deleted_query="SELECT recordid AS id FROM deletedrecord",
+    )
+    with pytest.raises(UserException, match="needs Incremental Load"):
+        cfg.validate_for_run()
+
+
+def test_date_placeholders_only_in_deleted_query_pass():
+    cfg = _cfg(
+        mode="suiteql",
+        query="SELECT id FROM tx",
+        load_type="incremental_load",
+        primary_key=["id"],
+        deleted_query="SELECT recordid AS id FROM deletedrecord WHERE deleteddate >= :date_from",
+        date_from="2026-09-29",
+    )
+    cfg.validate_for_run()
